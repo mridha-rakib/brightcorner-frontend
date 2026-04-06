@@ -31,6 +31,11 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSlot,
+} from '@/components/ui/input-otp'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { JoinFlow } from '@/components/chat/join-flow'
@@ -188,11 +193,14 @@ export function ChatArea() {
     loadOlderMessages,
     loadJoinRequests,
     hasMoreMessages,
+    isLoadingActiveChat,
     isLoadingOlderMessages,
     isLoadingJoinRequests,
     isSendingMessage,
     reviewJoinRequest,
     startVoiceCall,
+    lockProtectedConversationAccess,
+    unlockProtectedConversation,
     updateChannelSubscription,
     emitTyping,
     typingUsers,
@@ -220,6 +228,8 @@ export function ChatArea() {
   const [selectedImageAttachment, setSelectedImageAttachment] = useState<MessageAttachment | null>(null)
   const [reviewStateByRequestId, setReviewStateByRequestId] = useState<Record<string, 'approve' | 'reject'>>({})
   const [isUpdatingSubscription, setIsUpdatingSubscription] = useState(false)
+  const [unlockPinValue, setUnlockPinValue] = useState('')
+  const [isUnlockingConversation, setIsUnlockingConversation] = useState(false)
 
   const activeChatKey = activeChat ? `${activeChat.type}:${activeChat.id}` : null
 
@@ -280,6 +290,9 @@ export function ChatArea() {
     [currentUser?.id, typingUsers],
   )
   const activeTypingLabel = activeTypingUsers.map(user => user.firstName).join(', ')
+  const isLockedProtectedConversation = activeChat?.type === 'dm'
+    && activeChat.isPinProtected
+    && activeChat.isLocked
   const reactorNameById = useMemo(() => {
     const names = new Map<string, string>()
 
@@ -317,7 +330,9 @@ export function ChatArea() {
     setSelectedImageAttachment(null)
     setShowEmojiTray(false)
     setIsUpdatingSubscription(false)
-  }, [activeChatKey])
+    setUnlockPinValue('')
+    setIsUnlockingConversation(false)
+  }, [activeChat?.isLocked, activeChatKey])
 
   useEffect(() => {
     if (
@@ -345,6 +360,14 @@ export function ChatArea() {
     if (!activeChat)
       return
 
+    if (isLockedProtectedConversation) {
+      if (typingStateRef.current) {
+        emitTyping('conversation', activeChat.id, false)
+        typingStateRef.current = false
+      }
+      return
+    }
+
     const chatType = activeChat.type === 'dm' ? 'conversation' : 'channel'
     const hasDraftActivity = draftMessage.trim().length > 0 || pendingAttachments.length > 0
 
@@ -367,7 +390,7 @@ export function ChatArea() {
     }, 1500)
 
     return () => clearTimeout(timer)
-  }, [activeChat, draftMessage, emitTyping, pendingAttachments.length])
+  }, [activeChat, draftMessage, emitTyping, isLockedProtectedConversation, pendingAttachments.length])
 
   useEffect(() => {
     return () => {
@@ -521,7 +544,47 @@ export function ChatArea() {
       return
     }
 
+    if (activeChat.isPinProtected && activeChat.isLocked) {
+      toast.error('Unlock this conversation with the PIN before starting a call.')
+      return
+    }
+
     void startVoiceCall()
+  }
+
+  async function handleUnlockProtectedConversation() {
+    if (!activeChat || activeChat.type !== 'dm' || !activeChat.isPinProtected)
+      return
+
+    if (unlockPinValue.length < 4) {
+      toast.error('Enter the 4-digit PIN to unlock this conversation.')
+      return
+    }
+
+    setIsUnlockingConversation(true)
+
+    try {
+      await unlockProtectedConversation(activeChat.id, unlockPinValue)
+      setUnlockPinValue('')
+      toast.success('Conversation unlocked for this tab.')
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to unlock the conversation.')
+    }
+    finally {
+      setIsUnlockingConversation(false)
+    }
+  }
+
+  async function handleLockProtectedConversation() {
+    try {
+      await lockProtectedConversationAccess()
+      setUnlockPinValue('')
+      toast.info('Conversation locked.')
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to lock the conversation.')
+    }
   }
 
   if (!activeChat) {
@@ -619,10 +682,15 @@ export function ChatArea() {
                 )}
                 {activeChat.type === 'dm' && activeChat.participant && (
                   <p className="text-[10px] font-medium text-neutral-400">
-                    {participantOnline ? 'Online now' : 'Offline'}
+                    {activeChat.isPinProtected && activeChat.isLocked
+                      ? 'PIN verification required'
+                      : participantOnline ? 'Online now' : 'Offline'}
                   </p>
                 )}
               </div>
+              {activeChat.type === 'dm' && activeChat.isPinProtected && (
+                <Lock size={12} className={`shrink-0 ${activeChat.isLocked ? 'text-indigo-500' : 'text-neutral-400'}`} />
+              )}
               {!activeChat.isPublic && activeChat.type === 'channel' && (
                 <Lock size={12} className="shrink-0 text-neutral-400" />
               )}
@@ -633,7 +701,8 @@ export function ChatArea() {
               variant="ghost"
               size="icon"
               onClick={handleVoiceCall}
-              className="h-9 w-9 rounded-xl text-neutral-400 hover:text-neutral-600"
+              disabled={activeChat.type === 'dm' && activeChat.isPinProtected && activeChat.isLocked}
+              className="h-9 w-9 rounded-xl text-neutral-400 hover:text-neutral-600 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Phone size={18} />
             </Button>
@@ -657,6 +726,69 @@ export function ChatArea() {
 
         {!isJoined
           ? <JoinFlow chat={activeChat} />
+          : isLockedProtectedConversation
+            ? (
+                <div className="flex min-h-0 flex-1 items-center justify-center p-4 sm:p-6 md:p-10">
+                  <div className="w-full max-w-xl rounded-[36px] border border-neutral-200 bg-white p-6 shadow-xl shadow-neutral-200/40 sm:p-8 md:p-10">
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-[28px] bg-indigo-50 text-indigo-600 shadow-sm">
+                      <Lock size={34} />
+                    </div>
+                    <div className="space-y-3 text-center">
+                      <p className="text-[11px] font-black uppercase tracking-[0.28em] text-neutral-400">
+                        Private Conversation
+                      </p>
+                      <h3 className="text-2xl font-black tracking-tight text-neutral-900">
+                        Enter PIN to Continue
+                      </h3>
+                      <p className="mx-auto max-w-md text-sm font-medium leading-relaxed text-neutral-500">
+                        This conversation is protected on both sides. Access resets when you switch chats, leave the tab, or return later.
+                      </p>
+                    </div>
+
+                    <div className="mt-8 rounded-[28px] border border-neutral-200 bg-neutral-50/70 p-5">
+                      <div className="flex items-center gap-4">
+                        <Avatar className="h-14 w-14 rounded-full border-2 border-white shadow-sm">
+                          <AvatarImage src={activeChat.participant?.profile.avatarUrl || ''} />
+                          <AvatarFallback className="bg-indigo-50 font-bold text-indigo-600">
+                            {activeChat.name.slice(0, 2).toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className="min-w-0">
+                          <p className="truncate text-base font-bold text-neutral-900">{activeChat.name}</p>
+                          <p className="truncate text-xs font-medium text-neutral-500">
+                            {activeChat.participant?.profile.username
+                              ? `@${activeChat.participant.profile.username}`
+                              : activeChat.participant?.email}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 flex flex-col items-center gap-5">
+                      <InputOTP maxLength={4} value={unlockPinValue} onChange={setUnlockPinValue} containerClassName="gap-2 sm:gap-4">
+                        <InputOTPGroup className="gap-2 sm:gap-4">
+                          {[0, 1, 2, 3].map(index => (
+                            <InputOTPSlot
+                              key={index}
+                              index={index}
+                              className="h-14 w-14 rounded-2xl border-2 border-neutral-200 bg-white text-xl font-bold shadow-sm data-[active=true]:border-indigo-600 sm:h-16 sm:w-16 sm:text-2xl"
+                            />
+                          ))}
+                        </InputOTPGroup>
+                      </InputOTP>
+
+                      <Button
+                        type="button"
+                        onClick={() => void handleUnlockProtectedConversation()}
+                        disabled={isUnlockingConversation || isLoadingActiveChat || unlockPinValue.length < 4}
+                        className="h-12 w-full rounded-2xl bg-indigo-600 text-sm font-bold text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700 sm:h-14"
+                      >
+                        {isUnlockingConversation || isLoadingActiveChat ? 'Verifying PIN...' : 'Unlock Conversation'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )
           : (
               <>
                 {pinnedMessages.length > 0 && (
@@ -956,14 +1088,14 @@ export function ChatArea() {
             )}
       </main>
       {showDetails && (
-        <aside className="fixed inset-0 z-50 flex h-full min-h-0 shrink-0 flex-col bg-white shadow-2xl md:static md:w-[21.25rem] md:border-l md:border-neutral-200 md:shadow-none">
+        <aside className="fixed inset-0 z-50 flex h-full min-h-0 shrink-0 flex-col overflow-hidden bg-white shadow-2xl md:static md:w-[21.25rem] md:border-l md:border-neutral-200 md:shadow-none">
           <header className="flex h-16 shrink-0 items-center justify-between border-b border-neutral-200 bg-white/80 px-4 backdrop-blur-md sm:px-6">
             <h3 className="text-[11px] font-bold uppercase tracking-[0.2em] text-neutral-900 italic">Chat Details</h3>
             <Button variant="ghost" size="icon" onClick={() => setShowDetails(false)} className="h-8 w-8 rounded-xl text-neutral-400 hover:text-neutral-600">
               <X size={18} />
             </Button>
           </header>
-          <ScrollArea className="flex-1">
+          <ScrollArea className="min-h-0 flex-1">
             <div className="flex flex-col items-center border-b border-neutral-100 bg-neutral-50/30 p-6 sm:p-8 md:p-10">
               <Avatar className="mb-6 h-20 w-20 overflow-hidden rounded-full shadow-2xl ring-4 ring-white sm:mb-8 sm:h-24 sm:w-24">
                 <AvatarImage src={activeChat.participant?.profile.avatarUrl || ''} className="object-cover" />
@@ -977,8 +1109,50 @@ export function ChatArea() {
               </p>
             </div>
 
+              {activeChat.type === 'dm' && activeChat.isPinProtected && (
+                <div className="p-5 pb-8 sm:p-6 sm:pb-8 md:p-8 md:pb-10">
+                  <div className="rounded-[28px] border border-neutral-200 bg-neutral-50/70 p-5 shadow-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">
+                          PIN Protection
+                        </h4>
+                        <p className="text-xs font-medium leading-relaxed text-neutral-500">
+                          Both participants must re-enter the PIN whenever the protected chat is reopened.
+                        </p>
+                      </div>
+                      <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ${activeChat.isLocked ? 'bg-amber-100 text-amber-600' : 'bg-indigo-100 text-indigo-600'}`}>
+                        <Lock size={18} />
+                      </div>
+                    </div>
+
+                    <div className="mt-4 rounded-3xl border border-white/90 bg-white px-4 py-3">
+                      <p className="text-sm font-semibold text-neutral-900">
+                        {activeChat.isLocked ? 'Locked in this tab' : 'Unlocked in this tab'}
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-neutral-500">
+                        {activeChat.isLocked
+                          ? 'Enter the shared PIN again to view messages.'
+                          : 'Lock the conversation now to require the PIN again immediately.'}
+                      </p>
+                    </div>
+
+                    {!activeChat.isLocked && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => void handleLockProtectedConversation()}
+                        className="mt-4 h-10 w-full rounded-2xl border-neutral-200 font-semibold text-neutral-700 hover:bg-neutral-100"
+                      >
+                        Lock Now
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {activeChat.type === 'channel' && (
-                <div className="p-5 sm:p-6 md:p-8">
+                <div className="p-5 pb-8 sm:p-6 sm:pb-8 md:p-8 md:pb-10">
                   {canManageSubscription && (
                     <div className="mb-8 rounded-[28px] border border-neutral-200 bg-neutral-50/70 p-5 shadow-sm">
                       <div className="flex items-start justify-between gap-4">

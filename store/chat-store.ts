@@ -8,13 +8,14 @@ import type {
   ChannelSummary,
   ChatListItem,
   ConversationSummary,
+  ConversationUnlockResponse,
   MessageAttachment,
   MessageListResponse,
   MessageResponse,
   PublicUser,
 } from '@/lib/api/types'
 
-import { apiClient, getApiErrorMessage, unwrapResponse } from '@/lib/api/client'
+import { apiClient, getApiErrorMessage, setConversationUnlockToken, unwrapResponse } from '@/lib/api/client'
 import { normalizeMessageAttachments, resolveMessagePreview } from '@/lib/chat-media'
 import { useAuthStore } from '@/store/auth-store'
 
@@ -58,6 +59,14 @@ function sortChatsByLatestActivity(chats: ChatListItem[]): ChatListItem[] {
 
     return secondDate - firstDate
   })
+}
+
+function redactProtectedConversation(conversation: ConversationSummary): ConversationSummary {
+  return {
+    ...conversation,
+    isLocked: true,
+    lastMessage: 'PIN protected conversation',
+  }
 }
 
 function resolveTypingKey(chatType: 'channel' | 'conversation', chatId: string): string {
@@ -106,6 +115,10 @@ type ChatStore = {
   activeChatType: 'channel' | 'dm' | null
   activeChannel: ChannelDetail | null
   activeConversation: ConversationSummary | null
+  protectedConversationAccess: {
+    conversationId: string
+    unlockToken: string
+  } | null
   messages: MessageResponse[]
   pinnedMessages: MessageResponse[]
   members: ChannelMember[]
@@ -134,6 +147,8 @@ type ChatStore = {
   createChannel: (input: CreateChannelInput) => Promise<ChannelDetail>
   loadDirectory: (search?: string) => Promise<void>
   createDirectConversation: (participantUserId: string, pin?: string) => Promise<ConversationSummary>
+  unlockProtectedConversation: (conversationId: string, pin: string) => Promise<ConversationSummary>
+  lockProtectedConversationAccess: () => Promise<void>
   sendMessage: (input: SendMessageInput) => Promise<MessageResponse>
   receiveMessage: (message: MessageResponse) => void
   updateMessage: (message: MessageResponse) => void
@@ -198,6 +213,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   activeChatType: null,
   activeChannel: null,
   activeConversation: null,
+  protectedConversationAccess: null,
   messages: [],
   pinnedMessages: [],
   members: [],
@@ -237,6 +253,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   setActiveChatId: async (id, type) => {
+    const previousState = get()
+    const previouslyUnlockedProtectedConversationId = previousState.activeChatType === 'dm'
+      && previousState.activeConversation?.isPinProtected
+      && previousState.protectedConversationAccess?.conversationId === previousState.activeConversation.id
+      ? previousState.activeConversation.id
+      : null
+
+    if (previouslyUnlockedProtectedConversationId && previouslyUnlockedProtectedConversationId !== id)
+      await get().lockProtectedConversationAccess()
+
     if (!id) {
       latestJoinRequestRequestId += 1
       set({
@@ -309,14 +335,36 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return
       }
 
-      const [conversation, messageData] = await Promise.all([
-        unwrapResponse<ConversationSummary>(apiClient.get(`/conversations/${id}`)),
-        loadMessagesForChat({
-          chatId: id,
-          chatType: 'dm',
-          limit: 40,
-        }),
-      ])
+      const conversation = await unwrapResponse<ConversationSummary>(apiClient.get(`/conversations/${id}`))
+
+      if (get().activeChatId !== id || get().activeChatType !== resolvedType)
+        return
+
+      if (conversation.isLocked) {
+        set((state) => ({
+          activeConversation: conversation,
+          activeChannel: null,
+          members: [],
+          joinRequests: [],
+          hasMoreMessages: false,
+          messages: [],
+          nextMessageCursor: null,
+          pinnedMessages: [],
+          isLoadingActiveChat: false,
+          protectedConversationAccess: state.protectedConversationAccess?.conversationId === id
+            ? state.protectedConversationAccess
+            : null,
+        }))
+
+        get().upsertChatSummary(conversation)
+        return
+      }
+
+      const messageData = await loadMessagesForChat({
+        chatId: id,
+        chatType: 'dm',
+        limit: 40,
+      })
 
       if (get().activeChatId !== id || get().activeChatType !== resolvedType)
         return
@@ -331,6 +379,9 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         nextMessageCursor: messageData.nextCursor,
         pinnedMessages: [],
         isLoadingActiveChat: false,
+        protectedConversationAccess: conversation.isPinProtected
+          ? get().protectedConversationAccess
+          : null,
       })
 
       void get().markChatAsRead({ chatId: id, chatType: 'dm' })
@@ -347,6 +398,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const currentUserId = useAuthStore.getState().user?.id
     if (!currentUserId)
       return
+
+    const { activeConversation, activeChatType } = get()
+    if (
+      chatType === 'dm'
+      && activeChatType === 'dm'
+      && activeConversation?.id === chatId
+      && activeConversation.isLocked
+    ) {
+      return
+    }
 
     set((state) => {
       const chats = updateChatById(state.chats, chatId, chat => ({ ...chat, unread: 0 }))
@@ -380,8 +441,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   loadOlderMessages: async () => {
-    const { activeChatId, activeChatType, isLoadingOlderMessages, nextMessageCursor } = get()
+    const { activeChatId, activeChatType, activeConversation, isLoadingOlderMessages, nextMessageCursor } = get()
     if (!activeChatId || !activeChatType || !nextMessageCursor || isLoadingOlderMessages)
+      return
+
+    if (activeChatType === 'dm' && activeConversation?.id === activeChatId && activeConversation.isLocked)
       return
 
     set({ isLoadingOlderMessages: true, error: null })
@@ -572,6 +636,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           activeChatType: 'dm' as const,
           activeConversation: conversation,
           activeChannel: null,
+          protectedConversationAccess: null,
           members: [],
           joinRequests: [],
           messages: [],
@@ -591,12 +656,151 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
   },
 
+  unlockProtectedConversation: async (conversationId, pin) => {
+    set({ error: null, isLoadingActiveChat: true })
+
+    try {
+      const { conversation, unlockToken } = await unwrapResponse<ConversationUnlockResponse>(
+        apiClient.post(`/conversations/${conversationId}/unlock`, { pin }),
+      )
+
+      setConversationUnlockToken(unlockToken)
+
+      const messageData = await loadMessagesForChat({
+        chatId: conversationId,
+        chatType: 'dm',
+        limit: 40,
+      })
+
+      const isStillActiveConversation = get().activeChatId === conversationId && get().activeChatType === 'dm'
+
+      if (!isStillActiveConversation) {
+        setConversationUnlockToken(null)
+
+        void apiClient.post(
+          `/conversations/${conversationId}/lock`,
+          undefined,
+          {
+            headers: {
+              'x-conversation-unlock-token': unlockToken,
+            },
+          },
+        ).catch(() => {})
+      }
+
+      const conversationSummary = isStillActiveConversation
+        ? conversation
+        : redactProtectedConversation(conversation)
+
+      set((state) => {
+        const nextChats = sortChatsByLatestActivity([
+          conversationSummary,
+          ...state.chats.filter(chat => chat.id !== conversationSummary.id),
+        ])
+
+        return {
+          chats: nextChats,
+          activeConversation: isStillActiveConversation ? conversationSummary : state.activeConversation,
+          hasMoreMessages: isStillActiveConversation ? Boolean(messageData.nextCursor) : state.hasMoreMessages,
+          isLoadingActiveChat: false,
+          messages: isStillActiveConversation ? messageData.items : state.messages,
+          nextMessageCursor: isStillActiveConversation ? messageData.nextCursor : state.nextMessageCursor,
+          pinnedMessages: isStillActiveConversation ? [] : state.pinnedMessages,
+          protectedConversationAccess: isStillActiveConversation
+            ? {
+                conversationId,
+                unlockToken,
+              }
+            : state.protectedConversationAccess,
+        }
+      })
+
+      if (isStillActiveConversation)
+        void get().markChatAsRead({ chatId: conversationId, chatType: 'dm' })
+
+      return conversation
+    }
+    catch (error) {
+      setConversationUnlockToken(null)
+      const message = getApiErrorMessage(error)
+      set({
+        error: message,
+        isLoadingActiveChat: false,
+      })
+      throw new Error(message)
+    }
+  },
+
+  lockProtectedConversationAccess: async () => {
+    const { activeConversation, protectedConversationAccess } = get()
+    if (!protectedConversationAccess)
+      return
+
+    const { conversationId, unlockToken } = protectedConversationAccess
+    setConversationUnlockToken(null)
+
+    try {
+      const lockedConversation = await unwrapResponse<ConversationSummary>(
+        apiClient.post(
+          `/conversations/${conversationId}/lock`,
+          undefined,
+          {
+            headers: {
+              'x-conversation-unlock-token': unlockToken,
+            },
+          },
+        ),
+      )
+
+      set((state) => ({
+        chats: sortChatsByLatestActivity([
+          lockedConversation,
+          ...state.chats.filter(chat => chat.id !== lockedConversation.id),
+        ]),
+        activeConversation: state.activeConversation?.id === lockedConversation.id
+          ? lockedConversation
+          : state.activeConversation,
+        hasMoreMessages: state.activeConversation?.id === lockedConversation.id ? false : state.hasMoreMessages,
+        messages: state.activeConversation?.id === lockedConversation.id ? [] : state.messages,
+        nextMessageCursor: state.activeConversation?.id === lockedConversation.id ? null : state.nextMessageCursor,
+        pinnedMessages: state.activeConversation?.id === lockedConversation.id ? [] : state.pinnedMessages,
+        protectedConversationAccess: null,
+      }))
+      return
+    }
+    catch {
+      set((state) => {
+        const lockedActiveConversation = activeConversation && activeConversation.id === conversationId && activeConversation.isPinProtected
+          ? redactProtectedConversation(activeConversation)
+          : state.activeConversation
+
+        return {
+          activeConversation: lockedActiveConversation,
+          chats: sortChatsByLatestActivity(state.chats.map((chat) => {
+            if (chat.type !== 'dm' || chat.id !== conversationId || !chat.isPinProtected)
+              return chat
+
+            return redactProtectedConversation(chat)
+          })),
+          hasMoreMessages: lockedActiveConversation?.id === conversationId ? false : state.hasMoreMessages,
+          messages: lockedActiveConversation?.id === conversationId ? [] : state.messages,
+          nextMessageCursor: lockedActiveConversation?.id === conversationId ? null : state.nextMessageCursor,
+          pinnedMessages: lockedActiveConversation?.id === conversationId ? [] : state.pinnedMessages,
+          protectedConversationAccess: null,
+        }
+      })
+    }
+  },
+
   sendMessage: async (input) => {
-    const { activeChatId, activeChatType } = get()
+    const { activeChatId, activeChatType, activeConversation } = get()
     const trimmedText = input.text.trim()
     const attachments = input.attachments ?? []
     if (!activeChatId || !activeChatType || (!trimmedText && attachments.length === 0))
       throw new Error('Message content is required.')
+
+    if (activeChatType === 'dm' && activeConversation?.id === activeChatId && activeConversation.isLocked)
+      throw new Error('Unlock this conversation with the PIN to send messages.')
 
     set({ isSendingMessage: true, error: null })
 
@@ -714,6 +918,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   toggleReaction: async (messageId, emoji) => {
+    const { activeChatType, activeConversation } = get()
+    if (activeChatType === 'dm' && activeConversation?.isLocked)
+      throw new Error('Unlock this conversation with the PIN to react to messages.')
+
     set({ error: null })
 
     try {
@@ -732,9 +940,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   upsertChatSummary: (chat) => {
     set((state) => {
+      const normalizedChat = chat.type === 'dm'
+        && state.activeChatType === 'dm'
+        && state.activeChatId === chat.id
+        && !chat.isLocked
+        ? { ...chat, unread: 0 }
+        : chat
       const existingChats = state.chats.filter(existingChat => existingChat.id !== chat.id)
       const nextState: Partial<ChatStore> = {
-        chats: sortChatsByLatestActivity([chat, ...existingChats]),
+        chats: sortChatsByLatestActivity([normalizedChat, ...existingChats]),
       }
 
       if (chat.type === 'channel' && state.activeChannel?.id === chat.id) {
@@ -745,8 +959,26 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         }
       }
 
-      if (chat.type === 'dm' && state.activeConversation?.id === chat.id)
-        nextState.activeConversation = chat
+      if (chat.type === 'dm' && state.activeConversation?.id === chat.id) {
+        const normalizedConversation = normalizedChat as ConversationSummary
+        nextState.activeConversation = {
+          ...state.activeConversation,
+          ...normalizedConversation,
+        }
+
+        if (chat.isLocked) {
+          if (state.protectedConversationAccess?.conversationId === chat.id)
+            setConversationUnlockToken(null)
+
+          nextState.hasMoreMessages = false
+          nextState.messages = []
+          nextState.nextMessageCursor = null
+          nextState.pinnedMessages = []
+          nextState.protectedConversationAccess = state.protectedConversationAccess?.conversationId === chat.id
+            ? null
+            : state.protectedConversationAccess
+        }
+      }
 
       return nextState
     })
@@ -789,11 +1021,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   clearSelection: () => {
     latestJoinRequestRequestId += 1
+    setConversationUnlockToken(null)
     set({
       activeChatId: null,
       activeChatType: null,
       activeChannel: null,
       activeConversation: null,
+      protectedConversationAccess: null,
       messages: [],
       pinnedMessages: [],
       members: [],
@@ -808,12 +1042,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   reset: () => {
     latestJoinRequestRequestId += 1
+    setConversationUnlockToken(null)
     set({
       chats: [],
       activeChatId: null,
       activeChatType: null,
       activeChannel: null,
       activeConversation: null,
+      protectedConversationAccess: null,
       messages: [],
       pinnedMessages: [],
       members: [],

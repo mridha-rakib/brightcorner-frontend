@@ -34,6 +34,24 @@ export const apiClient = axios.create({
 })
 
 let refreshSessionRequest: Promise<void> | null = null
+let conversationUnlockToken: string | null = null
+
+export function setConversationUnlockToken(token: string | null): void {
+  conversationUnlockToken = token
+}
+
+export function getConversationUnlockToken(): string | null {
+  return conversationUnlockToken
+}
+
+apiClient.interceptors.request.use((config) => {
+  if (conversationUnlockToken) {
+    config.headers = config.headers ?? {}
+    config.headers['x-conversation-unlock-token'] = conversationUnlockToken
+  }
+
+  return config
+})
 
 function shouldRefreshSession(config: RetryableRequestConfig | undefined, statusCode?: number): config is RetryableRequestConfig {
   if (statusCode !== 401 || !config || config._retry || config.skipAuthRefresh)

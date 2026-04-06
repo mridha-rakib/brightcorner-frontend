@@ -83,7 +83,7 @@ export function Sidebar() {
                                 (activeTab === 'dms' && chat.type === 'dm');
 
                             const matchesSearch = chat.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                chat.lastMessage.toLowerCase().includes(searchQuery.toLowerCase());
+                                (chat.lastMessage ?? '').toLowerCase().includes(searchQuery.toLowerCase());
 
                             return matchesTab && matchesSearch;
                         })
@@ -120,6 +120,9 @@ export function Sidebar() {
                                             <span className={`text-sm font-semibold truncate ${activeChatId === chat.id ? 'text-indigo-900' : 'text-neutral-900'}`}>
                                                 {chat.name}
                                             </span>
+                                            {chat.type === 'dm' && chat.isPinProtected && (
+                                                <Lock size={12} className="text-neutral-400 shrink-0" />
+                                            )}
                                             {!chat.isPublic && chat.type === 'channel' && (
                                                 <Lock size={12} className="text-neutral-400 shrink-0" />
                                             )}

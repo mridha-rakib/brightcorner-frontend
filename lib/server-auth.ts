@@ -5,7 +5,7 @@ import { cookies } from 'next/headers'
 import type { ApiSuccessEnvelope, PublicUser } from '@/lib/api/types'
 
 const DEFAULT_API_URL = 'http://localhost:3001/api/v1'
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL
+const API_BASE_URL = process.env.INTERNAL_API_URL || process.env.NEXT_PUBLIC_API_URL || DEFAULT_API_URL
 
 async function parseUserResponse(response: Response): Promise<PublicUser | null> {
   if (!response.ok)

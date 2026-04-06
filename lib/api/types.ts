@@ -168,10 +168,16 @@ export type ConversationSummary = {
   avatarUrl?: string
   isEncrypted: true
   isPinProtected: boolean
+  isLocked: boolean
   unread: number
   lastMessage: string | null
   lastMessageAt: string | null
   participant: PublicUser
+}
+
+export type ConversationUnlockResponse = {
+  conversation: ConversationSummary
+  unlockToken: string
 }
 
 export type MessageReactionSummary = {

@@ -1,0 +1,10 @@
+.env
+.env.*
+node_modules
+.next
+.git
+.gitignore
+npm-debug.log*
+bun.lockb
+tsconfig.tsbuildinfo
+Dockerfile

@@ -9,6 +9,7 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { usePathname } from 'next/navigation'
 import { io, type Socket } from 'socket.io-client'
 import { toast } from 'sonner'
 
@@ -56,6 +57,8 @@ export interface Chat {
   isSubscribed?: boolean
   totalAdmins?: number
   isEncrypted?: boolean
+  isPinProtected?: boolean
+  isLocked?: boolean
   questions?: ChannelQuestion[]
   participant?: PublicUser
 }
@@ -157,6 +160,8 @@ function toChatViewModel(chat: ChatListItem): Chat {
     lastMessage: chat.lastMessage ?? '',
     time: formatChatTimestamp(chat.lastMessageAt),
     isEncrypted: chat.isEncrypted,
+    isPinProtected: chat.isPinProtected,
+    isLocked: chat.isLocked,
     joinStatus: 'joined',
     participant: chat.participant,
   }
@@ -164,7 +169,9 @@ function toChatViewModel(chat: ChatListItem): Chat {
 
 export function ChatProvider({ children }: { children: ReactNode }) {
   const user = useAuthStore(state => state.user)
+  const pathname = usePathname()
   const hydrateChats = useChatStore(state => state.hydrateChats)
+  const lockProtectedConversationAccess = useChatStore(state => state.lockProtectedConversationAccess)
   const reset = useChatStore(state => state.reset)
   const setPresenceSnapshot = useChatStore(state => state.setPresenceSnapshot)
   const setUserPresence = useChatStore(state => state.setUserPresence)
@@ -175,6 +182,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const activeChatId = useChatStore(state => state.activeChatId)
   const activeChatType = useChatStore(state => state.activeChatType)
   const activeConversation = useChatStore(state => state.activeConversation)
+  const protectedConversationAccess = useChatStore(state => state.protectedConversationAccess)
   const typingUsersByChatKey = useChatStore(state => state.typingUsersByChatKey)
   const typingUsers = useMemo(() => {
     if (!activeChatId || !activeChatType)
@@ -191,6 +199,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
   const callStateRef = useRef<VoiceCallState>(IDLE_CALL_STATE)
   const activeConversationRef = useRef<ConversationSummary | null>(null)
+  const emittedProtectedConversationAccessRef = useRef<{ conversationId: string, unlockToken: string } | null>(null)
   const [callState, setCallState] = useState<VoiceCallState>(IDLE_CALL_STATE)
 
   useEffect(() => {
@@ -200,6 +209,30 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     activeConversationRef.current = activeConversation
   }, [activeConversation])
+
+  useEffect(() => {
+    if (pathname !== '/chat')
+      void lockProtectedConversationAccess()
+  }, [lockProtectedConversationAccess, pathname])
+
+  useEffect(() => {
+    function handleVisibilityChange(): void {
+      if (document.visibilityState === 'hidden')
+        void lockProtectedConversationAccess()
+    }
+
+    function handleWindowBlur(): void {
+      void lockProtectedConversationAccess()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('blur', handleWindowBlur)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('blur', handleWindowBlur)
+    }
+  }, [lockProtectedConversationAccess])
 
   function clearTypingTimeouts(): void {
     for (const timeout of typingTimeoutsRef.current.values())
@@ -378,6 +411,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (!user) {
       clearTypingTimeouts()
       socketRef.current?.disconnect()
+      emittedProtectedConversationAccessRef.current = null
       socketRef.current = null
       reset()
       resetCallState()
@@ -392,6 +426,14 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     })
 
     socketRef.current = socket
+
+    socket.on('connect', () => {
+      const currentAccess = useChatStore.getState().protectedConversationAccess
+      if (currentAccess) {
+        socket.emit('conversation:unlock', currentAccess)
+        emittedProtectedConversationAccessRef.current = currentAccess
+      }
+    })
 
     socket.on('presence:snapshot', (payload: { userIds: string[] }) => {
       setPresenceSnapshot(payload.userIds)
@@ -408,6 +450,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     socket.on('message:updated', (message: MessageResponse) => {
       updateMessage(message)
+    })
+
+    socket.on('chat:summary-updated', (chat: ChatListItem) => {
+      upsertChatSummary(chat)
     })
 
     socket.on('typing:update', (payload: TypingPayload) => {
@@ -493,13 +539,50 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       resetCallState()
     })
 
+    socket.on('conversation:error', (payload: { message: string }) => {
+      toast.error(payload.message)
+    })
+
     return () => {
       clearTypingTimeouts()
       socket.disconnect()
+      emittedProtectedConversationAccessRef.current = null
       socketRef.current = null
       resetCallState()
     }
-  }, [hydrateChats, receiveMessage, reset, setPresenceSnapshot, setTypingState, setUserPresence, updateMessage, upsertChatSummary, user])
+  }, [
+    hydrateChats,
+    receiveMessage,
+    reset,
+    setPresenceSnapshot,
+    setTypingState,
+    setUserPresence,
+    updateMessage,
+    upsertChatSummary,
+    user,
+  ])
+
+  useEffect(() => {
+    const socket = socketRef.current
+    const previousAccess = emittedProtectedConversationAccessRef.current
+
+    if (socket?.connected) {
+      if (
+        previousAccess
+        && (!protectedConversationAccess || previousAccess.conversationId !== protectedConversationAccess.conversationId)
+      ) {
+        socket.emit('conversation:lock', {
+          conversationId: previousAccess.conversationId,
+        })
+      }
+
+      if (protectedConversationAccess) {
+        socket.emit('conversation:unlock', protectedConversationAccess)
+      }
+    }
+
+    emittedProtectedConversationAccessRef.current = protectedConversationAccess
+  }, [protectedConversationAccess])
 
   function emitTyping(chatType: MessageChatType, chatId: string, isTyping: boolean): void {
     if (!socketRef.current?.connected)
@@ -508,6 +591,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     socketRef.current.emit(isTyping ? 'typing:start' : 'typing:stop', {
       chatId,
       chatType,
+      unlockToken: chatType === 'conversation' && protectedConversationAccess?.conversationId === chatId
+        ? protectedConversationAccess.unlockToken
+        : undefined,
     })
   }
 
@@ -523,6 +609,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    if (conversation.isPinProtected && conversation.isLocked) {
+      toast.error('Unlock this conversation with the PIN before starting a call.')
+      return
+    }
+
     setCallState({
       callId: null,
       conversationId: conversation.id,
@@ -533,6 +624,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     socketRef.current.emit('call:start', {
       conversationId: conversation.id,
+      unlockToken: protectedConversationAccess?.conversationId === conversation.id
+        ? protectedConversationAccess.unlockToken
+        : undefined,
     })
   }
 
@@ -644,6 +738,8 @@ export function useChat() {
   const loadJoinRequests = useChatStore(state => state.loadJoinRequests)
   const reviewJoinRequest = useChatStore(state => state.reviewJoinRequest)
   const updateChannelSubscription = useChatStore(state => state.updateChannelSubscription)
+  const unlockProtectedConversation = useChatStore(state => state.unlockProtectedConversation)
+  const lockProtectedConversationAccess = useChatStore(state => state.lockProtectedConversationAccess)
   const sendMessage = useChatStore(state => state.sendMessage)
   const toggleReaction = useChatStore(state => state.toggleReaction)
   const isLoadingActiveChat = useChatStore(state => state.isLoadingActiveChat)
@@ -694,8 +790,10 @@ export function useChat() {
     reviewJoinRequest,
     sendMessage,
     setActiveChatId,
+    lockProtectedConversationAccess,
     submitJoinRequest,
     toggleReaction,
+    unlockProtectedConversation,
     updateChannelSubscription,
   }
 }
