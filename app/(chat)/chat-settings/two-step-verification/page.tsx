@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { ArrowLeft } from 'lucide-react'
 import Link from 'next/link'
 import { toast } from 'sonner'
@@ -21,7 +21,7 @@ export default function TwoStepVerificationPage() {
     const verifyTwoFactor = useSettingsStore(state => state.verifyTwoFactor)
     const isSubmittingTwoFactor = useSettingsStore(state => state.isSubmittingTwoFactor)
 
-    const [enabled, setEnabled] = useState(true)
+    const [pendingEnabled, setPendingEnabled] = useState<boolean | null>(null)
     const [otp, setOtp] = useState('')
 
     useEffect(() => {
@@ -30,12 +30,43 @@ export default function TwoStepVerificationPage() {
         })
     }, [fetchTwoFactorSettings])
 
-    useEffect(() => {
-        if (twoFactorSettings)
-            setEnabled(twoFactorSettings.enabled)
-    }, [twoFactorSettings])
+    const persistedEnabled = twoFactorSettings?.enabled ?? false
+    const enabled = pendingEnabled ?? persistedEnabled
+    const hasPendingChange = pendingEnabled !== null && pendingEnabled !== persistedEnabled
+    const verificationActionLabel = useMemo(
+        () => (enabled ? 'Verify & Enable' : 'Verify & Disable'),
+        [enabled],
+    )
+
+    const handleToggleChange = async (nextEnabled: boolean) => {
+        if (!twoFactorSettings) {
+            setPendingEnabled(nextEnabled)
+            return
+        }
+
+        if (nextEnabled === persistedEnabled) {
+            setPendingEnabled(null)
+            setOtp('')
+            return
+        }
+
+        setPendingEnabled(nextEnabled)
+
+        try {
+            await sendTwoFactorCode()
+            setOtp('')
+            toast.success('Verification code sent successfully.')
+        }
+        catch (error) {
+            setPendingEnabled(null)
+            toast.error(error instanceof Error ? error.message : 'Unable to send a verification code.')
+        }
+    }
 
     const handleResendCode = async () => {
+        if (!hasPendingChange)
+            return
+
         try {
             await sendTwoFactorCode()
             toast.success('Verification code sent successfully.')
@@ -46,11 +77,15 @@ export default function TwoStepVerificationPage() {
     }
 
     const handleVerify = async () => {
+        if (!hasPendingChange)
+            return
+
         try {
             await verifyTwoFactor({
                 code: otp,
                 enabled,
             })
+            setPendingEnabled(null)
             setOtp('')
             toast.success(enabled ? 'Two-step verification enabled.' : 'Two-step verification disabled.')
         }
@@ -86,7 +121,8 @@ export default function TwoStepVerificationPage() {
                             </div>
                             <Switch
                                 checked={enabled}
-                                onCheckedChange={setEnabled}
+                                disabled={!twoFactorSettings || isSubmittingTwoFactor}
+                                onCheckedChange={(checked) => void handleToggleChange(checked)}
                             />
                         </div>
 
@@ -108,6 +144,7 @@ export default function TwoStepVerificationPage() {
                             <Button
                                 variant="link"
                                 onClick={() => void handleResendCode()}
+                                disabled={!hasPendingChange || isSubmittingTwoFactor}
                                 className="text-xs font-bold text-cyan-400 hover:text-cyan-500 p-0 h-auto"
                             >
                                 Resend Code
@@ -134,10 +171,10 @@ export default function TwoStepVerificationPage() {
 
                         <Button
                             onClick={() => void handleVerify()}
-                            disabled={otp.length !== 6 || isSubmittingTwoFactor}
+                            disabled={otp.length !== 6 || isSubmittingTwoFactor || !hasPendingChange}
                             className="w-full h-14 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-base transition-all shadow-xl shadow-indigo-100 transform active:scale-[0.98] disabled:opacity-70"
                         >
-                            {enabled ? 'Verify & Enable' : 'Verify & Disable'}
+                            {verificationActionLabel}
                         </Button>
                     </div>
 

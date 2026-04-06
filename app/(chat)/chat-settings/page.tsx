@@ -1,152 +1,160 @@
 'use client'
 
-import { ChevronLeft, ChevronRight, Eye, Mail, Bell, ShieldCheck, Palette, Moon, HelpCircle, FileText, Shield, Info, ArrowLeft, LogOut, Trash2 } from 'lucide-react'
-import Link from 'next/link'
+import type { ReactNode } from 'react'
 import { useState } from 'react'
+
+import Link from 'next/link'
+import { Bell, ChevronLeft, ChevronRight, FileText, HelpCircle, Info, KeyRound, LogOut, Mail, Shield, ShieldCheck, Trash2, UserCircle2 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Switch } from '@/components/ui/switch'
+
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { DeleteAccountModal } from '@/components/chat/delete-account-modal'
 import { useAuthStore } from '@/store/auth-store'
 
 type SettingItem = {
-    icon: React.ReactNode
-    label: string
-    href?: string
-    type?: 'toggle'
-    value?: boolean
-    onChange?: () => void
+  icon: ReactNode
+  label: string
+  href: string
 }
 
 export default function SettingsPage() {
-    const router = useRouter()
-    const signOut = useAuthStore(state => state.signOut)
-    const [nightMode, setNightMode] = useState(false)
-    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const router = useRouter()
+  const user = useAuthStore(state => state.user)
+  const signOut = useAuthStore(state => state.signOut)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
-    const handleLogOut = async () => {
-        try {
-            await signOut()
-            toast.success('Signed out successfully.')
-            router.push('/sign-in')
-        } catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
-        }
+  const initials = user?.fullName
+    .split(' ')
+    .map(part => part[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'BC'
+
+  const handleLogOut = async () => {
+    try {
+      await signOut()
+      toast.success('Signed out successfully.')
+      router.push('/sign-in')
     }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
+    }
+  }
 
-    const settingsGroups: { items: SettingItem[] }[] = [
-        {
-            items: [
-                { icon: <Eye size={18} className="text-red-400" />, label: 'Change Password', href: '/chat-settings/change-password' },
-                { icon: <Mail size={18} className="text-blue-400" />, label: 'Change Email', href: '/chat-settings/change-email' },
-            ]
-        },
-        {
-            items: [
-                {
-                    icon: <Bell size={18} className="text-red-400" />,
-                    label: 'Notifications',
-                    href: '/chat-settings/notifications'
-                },
-                { icon: <ShieldCheck size={18} className="text-neutral-500" />, label: 'Privacy Settings', href: '/chat-settings/privacy' },
-                { icon: <ShieldCheck size={18} className="text-neutral-500" />, label: 'Two-Step Verification', href: '/chat-settings/two-step-verification' },
-            ]
-        },
-        {
-            items: [
-                { icon: <HelpCircle size={18} className="text-yellow-600" />, label: 'Ask a Question', href: '/chat-settings/contact' },
-                { icon: <FileText size={18} className="text-emerald-400" />, label: 'Terms & Condition', href: '/terms' },
-                { icon: <Shield size={18} className="text-emerald-400" />, label: 'Privacy Policy', href: '/privacy' },
-                { icon: <Info size={18} className="text-yellow-600" />, label: 'About Us', href: '/chat-settings/about' },
-            ]
-        }
-    ]
+  const settingsGroups: { items: SettingItem[] }[] = [
+    {
+      items: [
+        { icon: <UserCircle2 size={18} className="text-indigo-500" />, label: 'Edit Profile', href: '/chat-settings/profile' },
+        { icon: <KeyRound size={18} className="text-red-400" />, label: 'Change Password', href: '/chat-settings/change-password' },
+        { icon: <Mail size={18} className="text-blue-400" />, label: 'Change Email', href: '/chat-settings/change-email' },
+      ],
+    },
+    {
+      items: [
+        { icon: <Bell size={18} className="text-red-400" />, label: 'Notifications', href: '/chat-settings/notifications' },
+        { icon: <ShieldCheck size={18} className="text-neutral-500" />, label: 'Privacy Settings', href: '/chat-settings/privacy' },
+        { icon: <ShieldCheck size={18} className="text-neutral-500" />, label: 'Two-Step Verification', href: '/chat-settings/two-step-verification' },
+      ],
+    },
+    {
+      items: [
+        { icon: <HelpCircle size={18} className="text-yellow-600" />, label: 'Ask a Question', href: '/chat-settings/contact' },
+        { icon: <FileText size={18} className="text-emerald-400" />, label: 'Terms & Condition', href: '/terms' },
+        { icon: <Shield size={18} className="text-emerald-400" />, label: 'Privacy Policy', href: '/privacy' },
+        { icon: <Info size={18} className="text-yellow-600" />, label: 'About Us', href: '/chat-settings/about' },
+      ],
+    },
+  ]
 
-    return (
-        <div className="flex-1 h-full bg-[#F8FAFC] flex flex-col overflow-hidden">
-            {/* Header */}
-            <header className="px-4 md:px-6 py-4 bg-white border-b border-neutral-100 flex items-center justify-between shadow-sm relative shrink-0">
-                <Link href="/chat" className="flex items-center gap-1 text-cyan-500 hover:text-cyan-600 transition-colors font-medium relative z-10">
-                    <ChevronLeft size={20} />
-                    <span className="hidden sm:inline text-sm">Chats</span>
-                    <span className="sm:hidden text-sm">Back</span>
-                </Link>
-                <h1 className="text-sm md:text-base font-semibold text-neutral-900 absolute left-1/2 -translate-x-1/2 w-full text-center px-16 pointer-events-none">Settings</h1>
-                <Link href="/chat" className="text-cyan-500 hover:text-cyan-600 transition-colors font-medium relative z-10 text-sm">
-                    Done
-                </Link>
-            </header>
+  return (
+    <div className="flex h-full flex-1 flex-col overflow-hidden bg-[#F8FAFC]">
+      <header className="relative flex shrink-0 items-center justify-between border-b border-neutral-100 bg-white px-4 py-4 shadow-sm md:px-6">
+        <Link href="/chat" className="relative z-10 flex items-center gap-1 text-cyan-500 transition-colors hover:text-cyan-600">
+          <ChevronLeft size={20} />
+          <span className="hidden text-sm sm:inline">Chats</span>
+          <span className="text-sm sm:hidden">Back</span>
+        </Link>
+        <h1 className="pointer-events-none absolute left-1/2 w-full -translate-x-1/2 px-16 text-center text-sm font-semibold text-neutral-900 md:text-base">
+          Settings
+        </h1>
+        <Link href="/chat" className="relative z-10 text-sm font-medium text-cyan-500 transition-colors hover:text-cyan-600">
+          Done
+        </Link>
+      </header>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {settingsGroups.map((group, groupIdx) => (
-                    <div key={groupIdx} className="bg-white rounded-2xl border border-neutral-100 overflow-hidden shadow-sm">
-                        {group.items.map((item, itemIdx) => (
-                            <div key={itemIdx}>
-                                {item.type === 'toggle' ? (
-                                    <div className="flex items-center justify-between p-4 bg-white hover:bg-neutral-50/30 transition-colors">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-8 h-8 rounded-lg bg-neutral-50 flex items-center justify-center">
-                                                {item.icon}
-                                            </div>
-                                            <span className="text-sm font-medium text-neutral-700">{item.label}</span>
-                                        </div>
-                                        <Switch
-                                            checked={item.value}
-                                            onCheckedChange={item.onChange}
-                                        />
-                                    </div>
-                                ) : (
-                                    <Link href={item.href as string} className="flex items-center justify-between p-4 hover:bg-neutral-50 transition-colors group">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-8 h-8 rounded-lg bg-neutral-50 flex items-center justify-center group-hover:bg-white transition-colors">
-                                                {item.icon}
-                                            </div>
-                                            <span className="text-sm font-medium text-neutral-700">{item.label}</span>
-                                        </div>
-                                        <ChevronRight size={18} className="text-neutral-300 group-hover:text-neutral-400 transition-colors" />
-                                    </Link>
-                                )}
-                                {itemIdx < group.items.length - 1 && (
-                                    <div className="mx-4 h-[1px] bg-neutral-50" />
-                                )}
-                            </div>
-                        ))}
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        <Link
+          href="/chat-settings/profile"
+          className="flex items-center gap-4 rounded-[28px] border border-neutral-100 bg-white p-5 shadow-sm transition-colors hover:bg-neutral-50"
+        >
+          <Avatar className="h-14 w-14 rounded-full border border-neutral-100">
+            <AvatarImage src={user?.profile.avatarUrl} className="object-cover" />
+            <AvatarFallback className="rounded-full bg-indigo-50 font-bold text-indigo-600">
+              {initials}
+            </AvatarFallback>
+          </Avatar>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-neutral-900">{user?.fullName || 'Your profile'}</p>
+            <p className="truncate text-xs text-neutral-500">
+              {user?.profile.bio || 'Add a photo, update your bio, and manage your profile details.'}
+            </p>
+          </div>
+          <ChevronRight size={18} className="text-neutral-300" />
+        </Link>
+
+        {settingsGroups.map((group, groupIdx) => (
+          <div key={groupIdx} className="overflow-hidden rounded-2xl border border-neutral-100 bg-white shadow-sm">
+            {group.items.map((item, itemIdx) => (
+              <div key={item.href}>
+                <Link href={item.href} className="group flex items-center justify-between p-4 transition-colors hover:bg-neutral-50">
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-neutral-50 transition-colors group-hover:bg-white">
+                      {item.icon}
                     </div>
-                ))}
+                    <span className="text-sm font-medium text-neutral-700">{item.label}</span>
+                  </div>
+                  <ChevronRight size={18} className="text-neutral-300 transition-colors group-hover:text-neutral-400" />
+                </Link>
+                {itemIdx < group.items.length - 1 && (
+                  <div className="mx-4 h-px bg-neutral-50" />
+                )}
+              </div>
+            ))}
+          </div>
+        ))}
 
-                {/* Account Actions */}
-                <div className="space-y-4 pt-4 pb-8">
-                    <button
-                        onClick={() => void handleLogOut()}
-                        className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-neutral-100 text-red-500 font-medium hover:bg-red-50 transition-colors group shadow-sm transition-all active:scale-[0.99]"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center group-hover:bg-white transition-colors">
-                                <LogOut size={18} />
-                            </div>
-                            <span className="text-sm">Log Out</span>
-                        </div>
-                    </button>
-
-                    <button
-                        onClick={() => setIsDeleteModalOpen(true)}
-                        className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-neutral-100 text-red-600 font-bold hover:bg-red-50 transition-colors group shadow-sm transition-all active:scale-[0.99]"
-                    >
-                        <div className="flex items-center gap-4">
-                            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center group-hover:bg-white transition-colors">
-                                <Trash2 size={18} />
-                            </div>
-                            <span className="text-sm">Delete Account</span>
-                        </div>
-                    </button>
-                </div>
+        <div className="space-y-4 pb-8 pt-4">
+          <button
+            onClick={() => void handleLogOut()}
+            className="group w-full rounded-2xl border border-neutral-100 bg-white p-4 text-red-500 shadow-sm transition-all hover:bg-red-50 active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 transition-colors group-hover:bg-white">
+                <LogOut size={18} />
+              </div>
+              <span className="text-sm font-medium">Log Out</span>
             </div>
+          </button>
 
-            <DeleteAccountModal
-                isOpen={isDeleteModalOpen}
-                onOpenChange={setIsDeleteModalOpen}
-            />
+          <button
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="group w-full rounded-2xl border border-neutral-100 bg-white p-4 text-red-600 shadow-sm transition-all hover:bg-red-50 active:scale-[0.99]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-50 transition-colors group-hover:bg-white">
+                <Trash2 size={18} />
+              </div>
+              <span className="text-sm font-bold">Delete Account</span>
+            </div>
+          </button>
         </div>
-    )
+      </div>
+
+      <DeleteAccountModal
+        isOpen={isDeleteModalOpen}
+        onOpenChange={setIsDeleteModalOpen}
+      />
+    </div>
+  )
 }

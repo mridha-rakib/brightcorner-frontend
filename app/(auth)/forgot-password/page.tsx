@@ -28,7 +28,7 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-neutral-50/50 px-6 relative overflow-hidden">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-neutral-50/50 px-4 py-10 sm:px-6">
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         <div className="absolute -top-24 -left-24 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl" />
         <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl" />
@@ -45,7 +45,7 @@ export default function ForgotPasswordPage() {
           </p>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-xl p-8 rounded-[2.5rem] shadow-2xl shadow-neutral-200/50 border border-neutral-100">
+        <div className="rounded-[2rem] border border-neutral-100 bg-white/80 p-6 shadow-2xl shadow-neutral-200/50 backdrop-blur-xl sm:rounded-[2.5rem] sm:p-8">
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div className="space-y-2.5">
               <Label className="text-[10px] font-black text-neutral-400 tracking-[0.2em] uppercase ml-1">

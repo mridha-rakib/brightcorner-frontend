@@ -5,11 +5,11 @@ import { ArrowLeft, Search, MessageSquareX, Sparkles } from 'lucide-react'
 
 export default function NotFound() {
     return (
-        <div className="min-h-screen w-full bg-white flex items-center justify-center relative overflow-hidden font-sans">
+        <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-white font-sans">
             {/* Morphing Background Glows */}
-            <div className="absolute top-0 right-0 w-[800px] h-[800px] bg-indigo-50/50 rounded-full blur-[140px] animate-pulse pointer-events-none" />
-            <div className="absolute bottom-0 left-0 w-[600px] h-[600px] bg-purple-50/40 rounded-full blur-[120px] animate-pulse [animation-delay:2s] pointer-events-none" />
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-cyan-50/30 rounded-full blur-[100px] pointer-events-none" />
+            <div className="pointer-events-none absolute right-0 top-0 h-[60vw] w-[60vw] max-h-[800px] max-w-[800px] rounded-full bg-indigo-50/50 blur-[140px] animate-pulse" />
+            <div className="pointer-events-none absolute bottom-0 left-0 h-[48vw] w-[48vw] max-h-[600px] max-w-[600px] rounded-full bg-purple-50/40 blur-[120px] animate-pulse [animation-delay:2s]" />
+            <div className="pointer-events-none absolute left-1/2 top-1/2 h-[36vw] w-[36vw] max-h-[400px] max-w-[400px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-50/30 blur-[100px]" />
 
             {/* Premium 404 Watermark */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none select-none">
@@ -17,7 +17,7 @@ export default function NotFound() {
                     <span className="text-[35vw] font-black text-neutral-900/[0.02] leading-none tracking-tighter transition-all duration-1000 group-hover:text-neutral-900/[0.04]">
                         4
                     </span>
-                    <div className="w-[18vw] h-[18vw] bg-indigo-600/5 rounded-[4vw] rotate-12 -mx-[2vw] animate-bounce [animation-duration:8s]" />
+                    <div className="h-[22vw] w-[22vw] rounded-[4vw] bg-indigo-600/5 -mx-[2vw] rotate-12 animate-bounce [animation-duration:8s] sm:h-[18vw] sm:w-[18vw]" />
                     <span className="text-[35vw] font-black text-neutral-900/[0.02] leading-none tracking-tighter">
                         4
                     </span>
@@ -25,7 +25,7 @@ export default function NotFound() {
             </div>
 
             {/* Main Content Card */}
-            <div className="relative z-10 max-w-2xl w-full px-8 text-center flex flex-col items-center">
+            <div className="relative z-10 flex w-full max-w-2xl flex-col items-center px-6 text-center sm:px-8">
                 {/* Icon Badge */}
                 <div className="mb-10 relative">
                     <div className="w-24 h-24 bg-white rounded-[32px] shadow-2xl shadow-indigo-100 border border-neutral-100 flex items-center justify-center text-indigo-600 relative overflow-hidden group">

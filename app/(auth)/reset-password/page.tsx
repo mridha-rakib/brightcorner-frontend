@@ -46,7 +46,7 @@ function ResetPasswordForm() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-neutral-50/50 px-6 relative overflow-hidden py-12">
+    <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-neutral-50/50 px-4 py-10 sm:px-6 sm:py-12">
       <div className="absolute top-0 left-0 w-full h-full pointer-events-none">
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-100/30 rounded-full blur-3xl opacity-50" />
         <div className="absolute -bottom-24 -left-24 w-96 h-96 bg-cyan-100/30 rounded-full blur-3xl opacity-50" />

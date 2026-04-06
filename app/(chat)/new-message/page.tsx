@@ -101,7 +101,7 @@ export default function NewMessagePage() {
                 {users.map(user => (
                   <div key={user.id} onClick={() => setSelectedUserId(user.id)} className={`group flex items-center justify-between p-3.5 md:p-4 rounded-2xl md:rounded-[32px] cursor-pointer transition-all duration-300 border-2 ${selectedUserId === user.id ? 'bg-indigo-50/50 border-indigo-100' : 'bg-transparent border-transparent hover:bg-neutral-50/50'}`}>
                     <div className="flex items-center gap-3 md:gap-4">
-                      <Avatar className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl border-2 border-white shadow-sm">
+                      <Avatar className="w-10 h-10 md:w-14 md:h-14 rounded-full border-2 border-white shadow-sm">
                         <AvatarImage src={user.profile.avatarUrl} className="object-cover" />
                         <AvatarFallback className="bg-neutral-100 text-neutral-500 font-bold uppercase">
                           {user.fullName.split(' ').map(name => name[0]).join('')}
@@ -223,7 +223,7 @@ export default function NewMessagePage() {
             <div className="space-y-4">
               <Label className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.2em] px-1">Recipient</Label>
               <div className="flex items-center gap-3 md:gap-4 p-4 md:p-5 bg-white rounded-2xl md:rounded-3xl border border-neutral-100 shadow-xs">
-                <Avatar className="w-12 h-12 md:w-14 md:h-14 rounded-xl md:rounded-2xl border-2 border-neutral-50 bg-neutral-50 shadow-sm">
+                <Avatar className="w-12 h-12 md:w-14 md:h-14 rounded-full border-2 border-neutral-50 bg-neutral-50 shadow-sm">
                   <AvatarImage src={selectedUser?.profile.avatarUrl} className="object-cover" />
                   <AvatarFallback className="bg-neutral-100 text-neutral-500 font-bold">
                     {selectedUser?.fullName.split(' ').map(name => name[0]).join('')}

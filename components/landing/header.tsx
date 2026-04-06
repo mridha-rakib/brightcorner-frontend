@@ -1,8 +1,19 @@
 'use client'
 
 import Link from 'next/link'
-import { Menu } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { LogOut, Menu, User } from 'lucide-react'
+import { toast } from 'sonner'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import {
     Sheet,
     SheetContent,
@@ -10,11 +21,40 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet'
+import { useAuthStore } from '@/store/auth-store'
+
+function getInitials(fullName?: string) {
+    return fullName
+        ?.split(' ')
+        .map(part => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'BC'
+}
 
 export function Header() {
+    const router = useRouter()
+    const user = useAuthStore(state => state.user)
+    const isInitializing = useAuthStore(state => state.isInitializing)
+    const signOut = useAuthStore(state => state.signOut)
+
+    const initials = getInitials(user?.fullName)
+    const profileHref = user?.role === 'admin' ? '/profile' : '/chat-settings'
+
+    const handleSignOut = async () => {
+        try {
+            await signOut()
+            toast.success('Signed out successfully.')
+            router.push('/')
+        }
+        catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
+        }
+    }
+
     return (
         <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-sm border-b border-neutral-200">
-            <nav className="container mx-auto flex items-center justify-between py-4 px-5 md:px-0">
+            <nav className="container mx-auto flex items-center justify-between px-4 py-4 sm:px-5 md:px-0">
                 <Link href="/" className="text-xl font-bold text-neutral-900">
                     BrightCorner
                 </Link>
@@ -32,11 +72,58 @@ export function Header() {
                 </div>
 
                 <div className="flex items-center gap-4">
-                    <Link href="/sign-in" className="hidden sm:block">
-                        <Button className="bg-[#4338CA] text-white rounded-full px-6 text-xs font-bold tracking-widest transition-all hover:bg-indigo-700 shadow-xl shadow-indigo-100">
-                            LOGIN
-                        </Button>
-                    </Link>
+                    {!isInitializing && user && (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="size-10 rounded-full border border-neutral-200 bg-white p-0 hover:bg-neutral-50"
+                                >
+                                    <Avatar className="h-10 w-10 border border-white shadow-sm">
+                                        <AvatarImage src={user.profile.avatarUrl} alt={user.fullName} className="object-cover" />
+                                        <AvatarFallback className="bg-[#4338CA] text-xs font-bold text-white">
+                                            {initials}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent
+                                align="end"
+                                className="w-56 rounded-2xl border-neutral-200 p-1.5"
+                            >
+                                <DropdownMenuLabel className="px-3 py-2">
+                                    <div className="space-y-0.5">
+                                        <p className="text-sm font-semibold text-neutral-900">{user.fullName}</p>
+                                        <p className="text-xs font-normal text-neutral-500">{user.email}</p>
+                                    </div>
+                                </DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem asChild className="cursor-pointer rounded-xl px-3 py-2.5 font-medium text-neutral-700">
+                                    <Link href={profileHref} className="flex items-center gap-2">
+                                        <User size={16} />
+                                        Profile
+                                    </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                    variant="destructive"
+                                    className="cursor-pointer rounded-xl px-3 py-2.5 font-medium"
+                                    onSelect={() => void handleSignOut()}
+                                >
+                                    <LogOut size={16} />
+                                    Logout
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+
+                    {!isInitializing && !user && (
+                        <Link href="/sign-in" className="hidden sm:block">
+                            <Button className="bg-[#4338CA] text-white rounded-full px-6 text-xs font-bold tracking-widest transition-all hover:bg-indigo-700 shadow-xl shadow-indigo-100">
+                                LOGIN
+                            </Button>
+                        </Link>
+                    )}
 
                     {/* Mobile Menu Trigger */}
                     <div className="md:hidden">
@@ -46,7 +133,7 @@ export function Header() {
                                     <Menu size={24} />
                                 </Button>
                             </SheetTrigger>
-                            <SheetContent side="right" className="w-[300px] sm:w-[400px]">
+                            <SheetContent side="right" className="w-[85vw] max-w-[400px]">
                                 <SheetHeader>
                                     <SheetTitle className="text-left font-bold text-xl text-neutral-900">
                                         BrightCorner
@@ -62,11 +149,13 @@ export function Header() {
                                     <Link href="#access" className="text-lg font-medium text-neutral-600 hover:text-[#4338CA] transition-colors border-b border-neutral-100 pb-4">
                                         ACCESS
                                     </Link>
-                                    <Link href="/sign-in" className="mt-4">
-                                        <Button className="w-full bg-[#4338CA] text-white rounded-full py-6 text-sm font-bold tracking-widest">
-                                            LOGIN
-                                        </Button>
-                                    </Link>
+                                    {!isInitializing && !user && (
+                                        <Link href="/sign-in" className="mt-4">
+                                            <Button className="w-full bg-[#4338CA] text-white rounded-full py-6 text-sm font-bold tracking-widest">
+                                                LOGIN
+                                            </Button>
+                                        </Link>
+                                    )}
                                 </div>
                             </SheetContent>
                         </Sheet>

@@ -37,7 +37,7 @@ export default function AdminDashboardPage() {
         <div className="space-y-5 py-5">
             <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
                 <div className="space-y-1">
-                    <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900">Dashboard Overview</h1>
+                    <h1 className="text-2xl font-extrabold tracking-tight text-neutral-900 sm:text-3xl">Dashboard Overview</h1>
                     <p className="text-neutral-500">
                         Welcome back, {user?.firstName || 'Admin'}. Here is the current platform snapshot.
                     </p>
@@ -46,7 +46,7 @@ export default function AdminDashboardPage() {
 
             <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
                 {statsConfig.map(stat => (
-                    <div key={stat.name} className="group relative overflow-hidden rounded-[24px] border border-neutral-100 bg-white p-6 shadow-sm transition-all hover:shadow-md">
+                    <div key={stat.name} className="group relative overflow-hidden rounded-[24px] border border-neutral-100 bg-white p-5 shadow-sm transition-all hover:shadow-md md:p-6">
                         <div className={`absolute -right-4 -top-4 h-24 w-24 rounded-full ${stat.color} opacity-[0.03] blur-2xl transition-opacity group-hover:opacity-[0.06]`} />
                         <div className="mb-4 flex items-center justify-between">
                             <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${stat.color} text-white shadow-lg`}>
@@ -67,8 +67,8 @@ export default function AdminDashboardPage() {
                 ))}
             </div>
 
-            <div className="rounded-[32px] border border-neutral-100 bg-white p-8 shadow-sm">
-                <div className="mb-8 flex items-center justify-between">
+            <div className="rounded-[32px] border border-neutral-100 bg-white p-5 shadow-sm md:p-8">
+                <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-50 text-indigo-600">
                             <ShieldCheck size={20} />
@@ -138,7 +138,7 @@ export default function AdminDashboardPage() {
             </div>
 
             <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-                <div className="rounded-[24px] border border-neutral-100 bg-white p-6 shadow-sm">
+                <div className="rounded-[24px] border border-neutral-100 bg-white p-5 shadow-sm md:p-6">
                     <div className="mb-4 flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
                             <Calendar size={20} />
@@ -167,7 +167,7 @@ export default function AdminDashboardPage() {
                     </div>
                 </div>
 
-                <div className="rounded-[24px] border border-neutral-100 bg-white p-6 shadow-sm">
+                <div className="rounded-[24px] border border-neutral-100 bg-white p-5 shadow-sm md:p-6">
                     <div className="mb-4 flex items-center gap-3">
                         <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600">
                             <Ban size={20} />

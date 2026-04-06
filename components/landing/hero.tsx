@@ -2,8 +2,8 @@
 
 export function Hero() {
     return (
-        <section className="py-24 md:py-32">
-            <div className="container mx-auto px-5 md:px-0">
+        <section className="py-20 sm:py-24 md:py-32">
+            <div className="container mx-auto px-4 sm:px-5 md:px-0">
 
                 {/* Label */}
                 <p className="text-xs text-neutral-400 tracking-widest uppercase mb-6">
@@ -19,7 +19,7 @@ export function Hero() {
                 </p>
 
                 {/* Bottom row: description left, specs right */}
-                <div className="grid md:grid-cols-2 gap-12 items-start">
+                <div className="grid items-start gap-8 md:grid-cols-2 md:gap-12">
                     <p className="text-base text-neutral-600 leading-relaxed max-w-sm">
                         We built BrightCorner for those who understand that true privacy is not about having something to hide, but about having something to protect.
                     </p>

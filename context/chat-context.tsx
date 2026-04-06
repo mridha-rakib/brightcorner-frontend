@@ -53,6 +53,7 @@ export interface Chat {
   online?: number
   isPublic?: boolean
   joinStatus?: JoinStatus
+  isSubscribed?: boolean
   totalAdmins?: number
   isEncrypted?: boolean
   questions?: ChannelQuestion[]
@@ -133,7 +134,7 @@ function toChatViewModel(chat: ChatListItem): Chat {
       id: chat.id,
       name: chat.name,
       type: 'channel',
-      unread: 0,
+      unread: chat.unread,
       lastMessage: chat.lastMessage ?? '',
       time: formatChatTimestamp(chat.lastMessageAt),
       description: chat.description,
@@ -141,6 +142,7 @@ function toChatViewModel(chat: ChatListItem): Chat {
       online: chat.online,
       isPublic: chat.isPublic,
       joinStatus: chat.joinStatus,
+      isSubscribed: chat.isSubscribed,
       totalAdmins: chat.totalAdmins,
       isEncrypted: chat.isEncrypted,
       questions: 'questions' in chat ? chat.questions : undefined,
@@ -151,7 +153,7 @@ function toChatViewModel(chat: ChatListItem): Chat {
     id: chat.id,
     name: chat.name,
     type: 'dm',
-    unread: 0,
+    unread: chat.unread,
     lastMessage: chat.lastMessage ?? '',
     time: formatChatTimestamp(chat.lastMessageAt),
     isEncrypted: chat.isEncrypted,
@@ -167,6 +169,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const setPresenceSnapshot = useChatStore(state => state.setPresenceSnapshot)
   const setUserPresence = useChatStore(state => state.setUserPresence)
   const receiveMessage = useChatStore(state => state.receiveMessage)
+  const updateMessage = useChatStore(state => state.updateMessage)
   const upsertChatSummary = useChatStore(state => state.upsertChatSummary)
   const setTypingState = useChatStore(state => state.setTypingState)
   const activeChatId = useChatStore(state => state.activeChatId)
@@ -403,6 +406,10 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       void ensureChatSummary(message.chatType, message.chatId)
     })
 
+    socket.on('message:updated', (message: MessageResponse) => {
+      updateMessage(message)
+    })
+
     socket.on('typing:update', (payload: TypingPayload) => {
       setTypingState(payload)
 
@@ -492,7 +499,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       socketRef.current = null
       resetCallState()
     }
-  }, [hydrateChats, receiveMessage, reset, setPresenceSnapshot, setTypingState, setUserPresence, upsertChatSummary, user])
+  }, [hydrateChats, receiveMessage, reset, setPresenceSnapshot, setTypingState, setUserPresence, updateMessage, upsertChatSummary, user])
 
   function emitTyping(chatType: MessageChatType, chatId: string, isTyping: boolean): void {
     if (!socketRef.current?.connected)
@@ -629,7 +636,16 @@ export function useChat() {
   const messages = useChatStore(state => state.messages)
   const pinnedMessages = useChatStore(state => state.pinnedMessages)
   const members = useChatStore(state => state.members)
+  const joinRequests = useChatStore(state => state.joinRequests)
+  const hasMoreMessages = useChatStore(state => state.hasMoreMessages)
+  const isLoadingOlderMessages = useChatStore(state => state.isLoadingOlderMessages)
+  const isLoadingJoinRequests = useChatStore(state => state.isLoadingJoinRequests)
+  const loadOlderMessages = useChatStore(state => state.loadOlderMessages)
+  const loadJoinRequests = useChatStore(state => state.loadJoinRequests)
+  const reviewJoinRequest = useChatStore(state => state.reviewJoinRequest)
+  const updateChannelSubscription = useChatStore(state => state.updateChannelSubscription)
   const sendMessage = useChatStore(state => state.sendMessage)
+  const toggleReaction = useChatStore(state => state.toggleReaction)
   const isLoadingActiveChat = useChatStore(state => state.isLoadingActiveChat)
   const isSendingMessage = useChatStore(state => state.isSendingMessage)
   const onlineUserIds = useChatStore(state => state.onlineUserIds)
@@ -662,16 +678,25 @@ export function useChat() {
 
       return chat
     }),
+    hasMoreMessages,
     isLoadingActiveChat,
+    isLoadingJoinRequests,
+    isLoadingOlderMessages,
     isSendingMessage,
     joinChannel,
+    joinRequests,
+    loadOlderMessages,
+    loadJoinRequests,
     members,
     messages,
     onlineUserIds,
     pinnedMessages,
+    reviewJoinRequest,
     sendMessage,
     setActiveChatId,
     submitJoinRequest,
+    toggleReaction,
+    updateChannelSubscription,
   }
 }
 

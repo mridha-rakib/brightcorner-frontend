@@ -62,14 +62,14 @@ export function JoinFlow({ chat }: { chat: Chat }) {
 
 function PublicJoinLanding({ chat, onJoin }: { chat: Chat; onJoin: () => Promise<void> }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 bg-neutral-50/30">
+    <div className="flex flex-1 flex-col items-center justify-center bg-neutral-50/30 p-6 sm:p-8">
       <div className="relative w-32 h-32 mb-8">
         <div className="w-full h-full rounded-full bg-neutral-200 overflow-hidden ring-4 ring-white shadow-xl flex items-center justify-center text-3xl font-black text-neutral-500">
           {chat.name.slice(0, 2).toUpperCase()}
         </div>
       </div>
 
-      <h1 className="text-4xl font-bold text-neutral-900 mb-4">{chat.name}</h1>
+      <h1 className="mb-4 text-center text-3xl font-bold text-neutral-900 sm:text-4xl">{chat.name}</h1>
       <p className="text-neutral-500 text-center max-w-md mb-10 leading-relaxed font-medium">
         {chat.description || 'Open for everyone in the organization to discover and join.'}
       </p>
@@ -87,8 +87,8 @@ function PublicJoinLanding({ chat, onJoin }: { chat: Chat; onJoin: () => Promise
 
 function PrivateJoinLanding({ chat, onRequest }: { chat: Chat; onRequest: () => void }) {
   return (
-    <div className="flex-1 flex items-center justify-center p-8 bg-neutral-50/30">
-      <div className="bg-white rounded-3xl p-12 shadow-2xl shadow-neutral-200/50 max-w-xl w-full flex flex-col items-center text-center border border-neutral-100">
+    <div className="flex flex-1 items-center justify-center bg-neutral-50/30 p-6 sm:p-8">
+      <div className="flex w-full max-w-xl flex-col items-center rounded-3xl border border-neutral-100 bg-white p-6 text-center shadow-2xl shadow-neutral-200/50 sm:p-8 md:p-12">
         <div className="relative w-28 h-28 mb-8">
           <div className="w-full h-full rounded-full bg-neutral-200 overflow-hidden ring-4 ring-white shadow-lg flex items-center justify-center text-3xl font-black text-neutral-500">
             {chat.name.slice(0, 2).toUpperCase()}
@@ -98,8 +98,8 @@ function PrivateJoinLanding({ chat, onRequest }: { chat: Chat; onRequest: () => 
           </div>
         </div>
 
-        <div className="flex items-center gap-3 mb-6">
-          <h1 className="text-3xl font-bold text-neutral-900">{chat.name}</h1>
+        <div className="mb-6 flex flex-wrap items-center justify-center gap-3">
+          <h1 className="text-2xl font-bold text-neutral-900 sm:text-3xl">{chat.name}</h1>
           <div className="flex items-center gap-1.5 px-3 py-1 bg-cyan-50 text-cyan-600 rounded-full text-[10px] font-bold tracking-wider uppercase">
             <Lock size={10} />
             Private Channel
@@ -108,7 +108,7 @@ function PrivateJoinLanding({ chat, onRequest }: { chat: Chat; onRequest: () => 
 
         <p className="text-neutral-500 mb-10 leading-relaxed font-medium">{chat.description}</p>
 
-        <div className="grid grid-cols-3 gap-8 w-full mb-12 border-t border-neutral-100 pt-8">
+        <div className="mb-10 grid w-full grid-cols-1 gap-4 border-t border-neutral-100 pt-8 sm:mb-12 sm:grid-cols-3 sm:gap-8">
           <div className="flex items-center gap-2 justify-center">
             <Users size={18} className="text-neutral-400" />
             <span className="text-sm font-bold text-neutral-900">{chat.members} <span className="text-neutral-400 font-medium">Members</span></span>
@@ -152,10 +152,10 @@ function JoinRequestForm({
   const isComplete = questions.every(question => Boolean(answers[question.questionId]))
 
   return (
-    <div className="flex-1 flex flex-col p-12 bg-white overflow-hidden overflow-y-auto">
+    <div className="flex flex-1 flex-col overflow-hidden overflow-y-auto bg-white p-5 sm:p-8 md:p-12">
       <div className="max-w-2xl mx-auto w-full">
-        <div className="text-center mb-12">
-          <h1 className="text-3xl font-bold text-neutral-900 mb-3">Answer a few questions</h1>
+        <div className="mb-10 text-center sm:mb-12">
+          <h1 className="mb-3 text-2xl font-bold text-neutral-900 sm:text-3xl">Answer a few questions</h1>
           <p className="text-neutral-500 text-sm">
             The admins of <span className="font-bold text-neutral-800">{chat.name}</span> require a few details before approving your request.
           </p>
@@ -197,7 +197,7 @@ function JoinRequestForm({
           </div>
         </div>
 
-        <div className="mt-16 flex items-center justify-center gap-8">
+        <div className="mt-12 flex items-center justify-center gap-8 sm:mt-16">
           <button
             onClick={() => void onSubmit({
               answers: questions.map(question => ({
@@ -206,7 +206,7 @@ function JoinRequestForm({
               })),
               reason: reason.trim() || undefined,
             })}
-            className="bg-indigo-600 text-white px-10 py-4 rounded-full font-bold hover:bg-indigo-700 transition-all shadow-lg active:scale-95 disabled:opacity-50"
+            className="w-full rounded-full bg-indigo-600 px-10 py-4 font-bold text-white shadow-lg transition-all hover:bg-indigo-700 active:scale-95 disabled:opacity-50 sm:w-auto"
             disabled={!isComplete}
           >
             Submit Request
@@ -227,8 +227,8 @@ function StatusView({
   message: string
 }) {
   return (
-    <div className="flex-1 flex items-center justify-center p-8 bg-neutral-50/30">
-      <div className="bg-white rounded-3xl p-12 shadow-2xl shadow-neutral-200/50 max-w-lg w-full flex flex-col items-center text-center border border-neutral-100">
+    <div className="flex flex-1 items-center justify-center bg-neutral-50/30 p-6 sm:p-8">
+      <div className="flex w-full max-w-lg flex-col items-center rounded-3xl border border-neutral-100 bg-white p-6 text-center shadow-2xl shadow-neutral-200/50 sm:p-8 md:p-12">
         <div className="w-20 h-20 rounded-full flex items-center justify-center mb-8 bg-cyan-50 text-cyan-400">
           <div className="w-12 h-12 rounded-full bg-cyan-100 flex items-center justify-center">
             <Check size={28} className="text-cyan-400" />

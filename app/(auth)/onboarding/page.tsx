@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
+import { compressAvatarImage } from '@/lib/avatar-upload'
 import { useAuthStore } from '@/store/auth-store'
 
 type Step = 'username' | 'profile' | 'privacy' | 'notifications' | 'success'
@@ -33,65 +34,6 @@ type OnboardingData = {
 }
 
 const steps: Step[] = ['username', 'profile', 'privacy', 'notifications', 'success']
-const MAX_AVATAR_DIMENSION = 640
-const MIN_AVATAR_DIMENSION = 256
-const TARGET_AVATAR_DATA_URL_LENGTH = 350_000
-
-function loadImageFromFile(file: File): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file)
-    const image = new Image()
-
-    image.onload = () => {
-      URL.revokeObjectURL(objectUrl)
-      resolve(image)
-    }
-
-    image.onerror = () => {
-      URL.revokeObjectURL(objectUrl)
-      reject(new Error('Unable to process the selected image.'))
-    }
-
-    image.src = objectUrl
-  })
-}
-
-async function compressAvatarImage(file: File): Promise<string> {
-  const image = await loadImageFromFile(file)
-  const canvas = document.createElement('canvas')
-  const context = canvas.getContext('2d')
-
-  if (!context)
-    throw new Error('Image processing is not available in this browser.')
-
-  const largestSide = Math.max(image.width, image.height)
-  let currentDimension = Math.min(MAX_AVATAR_DIMENSION, largestSide)
-  let quality = 0.82
-
-  while (currentDimension >= MIN_AVATAR_DIMENSION) {
-    const scale = currentDimension / largestSide
-    canvas.width = Math.max(1, Math.round(image.width * scale))
-    canvas.height = Math.max(1, Math.round(image.height * scale))
-
-    context.clearRect(0, 0, canvas.width, canvas.height)
-    context.drawImage(image, 0, 0, canvas.width, canvas.height)
-
-    let dataUrl = canvas.toDataURL('image/webp', quality)
-
-    while (dataUrl.length > TARGET_AVATAR_DATA_URL_LENGTH && quality > 0.45) {
-      quality = Number((quality - 0.08).toFixed(2))
-      dataUrl = canvas.toDataURL('image/webp', quality)
-    }
-
-    if (dataUrl.length <= TARGET_AVATAR_DATA_URL_LENGTH)
-      return dataUrl
-
-    currentDimension = Math.floor(currentDimension * 0.82)
-    quality = 0.82
-  }
-
-  throw new Error('Please choose a smaller image. Large photos must be compressed before upload.')
-}
 
 export default function OnboardingPage() {
   const router = useRouter()
@@ -210,9 +152,9 @@ export default function OnboardingPage() {
     return null
 
   return (
-    <div className="min-h-screen bg-neutral-50/50 flex flex-col items-center justify-center p-6 font-sans antialiased">
+    <div className="min-h-screen bg-neutral-50/50 flex flex-col items-stretch justify-center p-4 font-sans antialiased sm:p-6 md:items-center">
       {currentStep !== 'success' && (
-        <div className="w-full max-w-md mb-12">
+        <div className="mb-8 w-full max-w-md sm:mb-12">
           <div className="flex justify-between items-center mb-4">
             <span className="text-[10px] font-black text-neutral-400 uppercase tracking-[0.2em]">Setup Progress</span>
             <Badge variant="secondary" className="bg-white border-neutral-100 text-neutral-500 font-black text-[10px] px-2 py-0.5 rounded-md">
@@ -232,16 +174,16 @@ export default function OnboardingPage() {
         </div>
       )}
 
-      <div className="w-full max-w-2xl bg-white border border-neutral-200/60 rounded-[40px] shadow-2xl shadow-neutral-200/40 overflow-hidden">
+      <div className="w-full max-w-2xl overflow-hidden rounded-[32px] border border-neutral-200/60 bg-white shadow-2xl shadow-neutral-200/40 md:rounded-[40px]">
         {currentStep === 'username' && (
-          <div className="p-12 md:p-20 text-center">
+          <div className="p-6 text-center sm:p-8 md:p-20">
             <div className="w-20 h-20 bg-indigo-50 rounded-3xl flex items-center justify-center mx-auto mb-10 border border-indigo-100/50 text-indigo-600 shadow-sm">
               <AtSign size={36} />
             </div>
-            <h1 className="text-3xl font-bold text-neutral-900 mb-3 tracking-tight">Choose your username</h1>
-            <p className="text-base text-neutral-500 mb-12 font-medium">This unique identifier will be visible to other members.</p>
+            <h1 className="mb-3 text-2xl font-bold tracking-tight text-neutral-900 sm:text-3xl">Choose your username</h1>
+            <p className="mb-10 text-sm font-medium text-neutral-500 sm:mb-12 sm:text-base">This unique identifier will be visible to other members.</p>
 
-            <div className="space-y-8 text-left max-w-sm mx-auto">
+            <div className="mx-auto max-w-sm space-y-8 text-left">
               <div className="space-y-3">
                 <Label className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.2em] px-1">Username</Label>
                 <div className="relative group">
@@ -271,13 +213,13 @@ export default function OnboardingPage() {
         )}
 
         {currentStep === 'profile' && (
-          <div className="p-12 md:p-20">
+          <div className="p-6 sm:p-8 md:p-20">
             <div className="mb-12">
               <h1 className="text-3xl font-bold text-neutral-900 mb-3 tracking-tight">Profile Setup</h1>
               <p className="text-base text-neutral-500 font-medium tracking-tight">Complete your professional profile details.</p>
             </div>
 
-            <div className="flex justify-center items-center gap-8 mb-12 pb-12 border-b border-neutral-100">
+            <div className="mb-10 flex items-center justify-center gap-6 border-b border-neutral-100 pb-10 sm:mb-12 sm:gap-8 sm:pb-12">
               <div className="relative group cursor-pointer" onClick={() => fileInputRef.current?.click()}>
                 <input
                   type="file"
@@ -305,7 +247,7 @@ export default function OnboardingPage() {
               </div>
             </div>
 
-            <div className="space-y-12">
+            <div className="space-y-10 sm:space-y-12">
               <div className="space-y-3">
                 <Label className="text-[11px] font-black text-neutral-400 uppercase tracking-[0.2em]">Bio</Label>
                 <Textarea
@@ -316,11 +258,11 @@ export default function OnboardingPage() {
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-6">
-                <Button variant="ghost" onClick={prevStep} className="text-[11px] font-black text-neutral-400 hover:text-neutral-600 uppercase tracking-[0.2em]">
+              <div className="flex flex-col-reverse gap-4 pt-6 sm:flex-row sm:items-center sm:justify-between">
+                <Button variant="ghost" onClick={prevStep} className="w-full text-[11px] font-black text-neutral-400 hover:text-neutral-600 uppercase tracking-[0.2em] sm:w-auto">
                   Previous Step
                 </Button>
-                <Button onClick={nextStep} className="bg-indigo-600 hover:bg-indigo-700 text-white h-16 px-12 rounded-2xl font-bold text-sm transition-all shadow-xl shadow-indigo-100">
+                <Button onClick={nextStep} className="h-14 w-full rounded-2xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-xl shadow-indigo-100 transition-all hover:bg-indigo-700 sm:h-16 sm:w-auto sm:px-12">
                   Save & Continue
                 </Button>
               </div>
@@ -329,7 +271,7 @@ export default function OnboardingPage() {
         )}
 
         {currentStep === 'privacy' && (
-          <div className="p-12 md:p-20">
+          <div className="p-6 sm:p-8 md:p-20">
             <div className="mb-12">
               <h1 className="text-3xl font-bold text-neutral-900 mb-3 tracking-tight">Privacy Settings</h1>
               <p className="text-base text-neutral-500 font-medium tracking-tight">Configure your security and interaction boundaries.</p>
@@ -342,7 +284,7 @@ export default function OnboardingPage() {
                 ['publicProfile', 'Public Profile', 'Allow others to view your profile details.'],
                 ['pinProtection', 'PIN Protection', 'Enable extra protection for secure chat access.'],
               ].map(([key, label, description]) => (
-                <div key={key} className="p-6 bg-white border border-neutral-100 rounded-[32px] flex items-start gap-6 shadow-xs">
+                <div key={key} className="flex items-start gap-4 rounded-[28px] border border-neutral-100 bg-white p-4 shadow-xs sm:gap-6 sm:p-6 sm:rounded-[32px]">
                   <div className="flex-1">
                     <div className="flex items-center justify-between mb-1.5">
                       <p className="text-base font-bold text-neutral-900 tracking-tight">{label}</p>
@@ -358,11 +300,11 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-16">
-              <Button variant="ghost" onClick={prevStep} className="text-[11px] font-black text-neutral-400 hover:text-neutral-600 uppercase tracking-[0.2em]">
+            <div className="flex flex-col-reverse gap-4 pt-10 sm:flex-row sm:items-center sm:justify-between sm:pt-16">
+              <Button variant="ghost" onClick={prevStep} className="w-full text-[11px] font-black text-neutral-400 hover:text-neutral-600 uppercase tracking-[0.2em] sm:w-auto">
                 Previous Step
               </Button>
-              <Button onClick={nextStep} className="bg-indigo-600 hover:bg-indigo-700 text-white h-16 px-12 rounded-2xl font-bold text-sm transition-all shadow-xl shadow-indigo-100">
+              <Button onClick={nextStep} className="h-14 w-full rounded-2xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-xl shadow-indigo-100 transition-all hover:bg-indigo-700 sm:h-16 sm:w-auto sm:px-12">
                 Continue to Notifications
               </Button>
             </div>
@@ -370,7 +312,7 @@ export default function OnboardingPage() {
         )}
 
         {currentStep === 'notifications' && (
-          <div className="p-12 md:p-20">
+          <div className="p-6 sm:p-8 md:p-20">
             <div className="mb-12">
               <h1 className="text-3xl font-bold text-neutral-900 mb-3 tracking-tight">Notifications</h1>
               <p className="text-base text-neutral-500 font-medium tracking-tight">Select how you want to be alerted about activity.</p>
@@ -383,8 +325,8 @@ export default function OnboardingPage() {
                 ['pinAlerts', 'PIN Message Alerts', 'When you are added to prioritized chats.'],
                 ['joinRequestAlerts', 'Join Request Alerts', 'When somebody requests to join your channels.'],
               ].map(([key, label, description]) => (
-                <div key={key} className="flex items-center justify-between p-6 bg-white rounded-[32px] border border-neutral-100 shadow-xs">
-                  <div className="space-y-0.5">
+                <div key={key} className="flex items-center justify-between gap-4 rounded-[28px] border border-neutral-100 bg-white p-4 shadow-xs sm:p-6 sm:rounded-[32px]">
+                  <div className="min-w-0 space-y-0.5">
                     <p className="text-base font-bold text-neutral-900 tracking-tight">{label}</p>
                     <p className="text-xs text-neutral-400 font-medium">{description}</p>
                   </div>
@@ -397,14 +339,14 @@ export default function OnboardingPage() {
               ))}
             </div>
 
-            <div className="flex items-center justify-between pt-16">
-              <Button variant="ghost" onClick={prevStep} className="text-[11px] font-black text-neutral-400 hover:text-neutral-600 uppercase tracking-[0.2em]">
+            <div className="flex flex-col-reverse gap-4 pt-10 sm:flex-row sm:items-center sm:justify-between sm:pt-16">
+              <Button variant="ghost" onClick={prevStep} className="w-full text-[11px] font-black text-neutral-400 hover:text-neutral-600 uppercase tracking-[0.2em] sm:w-auto">
                 Adjust previous
               </Button>
               <Button
                 onClick={handleFinish}
                 disabled={isSubmitting}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white h-16 px-12 rounded-2xl font-bold text-sm transition-all shadow-xl shadow-indigo-100"
+                className="h-14 w-full rounded-2xl bg-indigo-600 px-8 text-sm font-bold text-white shadow-xl shadow-indigo-100 transition-all hover:bg-indigo-700 sm:h-16 sm:w-auto sm:px-12"
               >
                 {isSubmitting ? 'Finishing...' : 'Finish Setup'}
               </Button>
@@ -413,19 +355,19 @@ export default function OnboardingPage() {
         )}
 
         {currentStep === 'success' && (
-          <div className="p-16 md:p-32 text-center">
+          <div className="p-8 text-center sm:p-12 md:p-32">
             <div className="w-24 h-24 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-10 border-4 border-white shadow-xl shadow-emerald-100 ring-1 ring-emerald-100">
               <Check className="text-emerald-500 stroke-[4]" size={40} />
             </div>
 
-            <h1 className="text-4xl font-black text-neutral-900 mb-4 tracking-tight">You&apos;re all set</h1>
-            <p className="text-lg text-neutral-500 font-medium mb-16 max-w-sm mx-auto leading-relaxed">
+            <h1 className="mb-4 text-3xl font-black tracking-tight text-neutral-900 sm:text-4xl">You&apos;re all set</h1>
+            <p className="mx-auto mb-12 max-w-sm text-base font-medium leading-relaxed text-neutral-500 sm:mb-16 sm:text-lg">
               Your professional profile is active. Welcome to BrightCorner.
             </p>
 
             <div className="max-w-xs mx-auto">
               <Link href="/chat" className="block">
-                <Button className="w-full h-18 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-base transition-all shadow-2xl shadow-indigo-100">
+                <Button className="h-14 w-full rounded-2xl bg-indigo-600 text-base font-black text-white shadow-2xl shadow-indigo-100 transition-all hover:bg-indigo-700 sm:h-16">
                   Continue to Dashboard
                 </Button>
               </Link>

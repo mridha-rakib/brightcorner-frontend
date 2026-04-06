@@ -28,10 +28,10 @@ export function Features() {
                 {features.map((feature) => (
                     <div
                         key={feature.number}
-                        className="px-5 md:px-0 grid grid-cols-[4rem_1fr_1fr] md:grid-cols-[6rem_1fr_1fr] items-start gap-8 py-10 group"
+                        className="group grid grid-cols-1 gap-4 px-4 py-8 sm:px-5 md:grid-cols-[6rem_1fr_1fr] md:items-start md:gap-8 md:px-0 md:py-10"
                     >
                         {/* Large faded number */}
-                        <span className="text-4xl md:text-5xl font-extralight text-neutral-200 group-hover:text-cyan-100 transition-colors leading-none pt-1">
+                        <span className="pt-1 text-4xl font-extralight leading-none text-neutral-200 transition-colors group-hover:text-cyan-100 md:text-5xl">
                             {feature.number}
                         </span>
 

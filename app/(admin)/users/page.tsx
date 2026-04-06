@@ -113,8 +113,8 @@ export default function UserManagementPage() {
                 </div>
             </div>
 
-            <div className="overflow-hidden border border-neutral-100 bg-white shadow-sm">
-                <Table>
+            <div className="overflow-x-auto border border-neutral-100 bg-white shadow-sm">
+                <Table className="min-w-[720px]">
                     <TableHeader className="bg-neutral-50/50">
                         <TableRow className="border-b-neutral-100 hover:bg-transparent">
                             <TableHead className="w-16 px-6 text-[10px] font-bold uppercase tracking-wider text-neutral-400">No</TableHead>

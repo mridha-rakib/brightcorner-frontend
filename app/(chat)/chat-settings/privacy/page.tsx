@@ -1,119 +1,187 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { ArrowLeft, Ban, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Ban } from 'lucide-react'
 import { toast } from 'sonner'
 
+import type { UserPrivacySettings } from '@/lib/api/types'
+
+import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { useAuthStore } from '@/store/auth-store'
 
+const defaultPrivacySettings: UserPrivacySettings = {
+  messagePreference: 'everyone',
+  anonymousMode: false,
+  onlineStatus: true,
+  publicProfile: true,
+  pinProtection: false,
+}
+
+const privacyToggleOptions: Array<{
+  key: Exclude<keyof UserPrivacySettings, 'messagePreference'>
+  title: string
+  description: string
+}> = [
+  {
+    key: 'anonymousMode',
+    title: 'Anonymous Mode',
+    description: 'Hide your identity in public spaces by default.',
+  },
+  {
+    key: 'onlineStatus',
+    title: 'Show Online Status',
+    description: 'Let other members see when you are currently active.',
+  },
+  {
+    key: 'publicProfile',
+    title: 'Public Profile',
+    description: 'Allow people to view your profile details outside direct conversations.',
+  },
+  {
+    key: 'pinProtection',
+    title: 'PIN Protection',
+    description: 'Require extra protection for secure chat access and prioritized conversations.',
+  },
+]
+
+const messagePreferences = [
+  { id: 'everyone', title: 'Everyone', description: 'Anyone on BrightCorner can message you.' },
+  { id: 'contacts', title: 'My Contacts', description: 'Only people you have saved can send messages.' },
+  { id: 'nobody', title: 'Nobody', description: 'You will not receive any direct messages.' },
+] as const
+
+function getUserPrivacySettings(user: ReturnType<typeof useAuthStore.getState>['user']): UserPrivacySettings {
+  if (!user)
+    return defaultPrivacySettings
+
+  return {
+    messagePreference: user.privacySettings.messagePreference,
+    anonymousMode: user.privacySettings.anonymousMode,
+    onlineStatus: user.privacySettings.onlineStatus,
+    publicProfile: user.privacySettings.publicProfile,
+    pinProtection: user.privacySettings.pinProtection,
+  }
+}
+
+function arePrivacySettingsEqual(left: UserPrivacySettings, right: UserPrivacySettings): boolean {
+  return left.messagePreference === right.messagePreference
+    && left.anonymousMode === right.anonymousMode
+    && left.onlineStatus === right.onlineStatus
+    && left.publicProfile === right.publicProfile
+    && left.pinProtection === right.pinProtection
+}
+
 export default function PrivacySettingsPage() {
   const user = useAuthStore(state => state.user)
+  const isSubmitting = useAuthStore(state => state.isSubmitting)
   const updatePrivacySettings = useAuthStore(state => state.updatePrivacySettings)
 
-  const [messagePreference, setMessagePreference] = useState<'everyone' | 'contacts' | 'nobody'>('everyone')
-  const [anonymousMode, setAnonymousMode] = useState(false)
-  const hasInitialized = useRef(false)
+  const [settings, setSettings] = useState<UserPrivacySettings>(defaultPrivacySettings)
 
   useEffect(() => {
-    if (!user)
-      return
-
-    setMessagePreference(user.privacySettings.messagePreference)
-    setAnonymousMode(user.privacySettings.anonymousMode)
-    hasInitialized.current = true
+    setSettings(getUserPrivacySettings(user))
   }, [user])
 
-  useEffect(() => {
-    if (!hasInitialized.current)
-      return
+  if (!user)
+    return null
 
-    const timer = setTimeout(() => {
-      void updatePrivacySettings({
-        messagePreference,
-        anonymousMode,
-      }).catch((error) => {
-        toast.error(error instanceof Error ? error.message : 'Unable to update privacy settings.')
-      })
-    }, 350)
+  const savedSettings = getUserPrivacySettings(user)
+  const hasChanges = !arePrivacySettingsEqual(settings, savedSettings)
 
-    return () => clearTimeout(timer)
-  }, [anonymousMode, messagePreference, updatePrivacySettings])
-
-  const preferences = [
-    { id: 'everyone', title: 'Everyone', description: 'Anyone on BrightCorner can message you.' },
-    { id: 'contacts', title: 'My Contacts', description: 'Only people you have saved can send messages.' },
-    { id: 'nobody', title: 'Nobody', description: 'You will not receive any direct messages.' },
-  ] as const
+  async function handleSave() {
+    try {
+      await updatePrivacySettings(settings)
+      toast.success('Privacy settings updated successfully.')
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to update privacy settings.')
+    }
+  }
 
   return (
-    <div className="flex-1 h-full bg-[#F8FAFC] flex flex-col overflow-hidden">
-      <header className="px-4 md:px-6 py-4 bg-white border-b border-neutral-100 flex items-center justify-between shadow-sm relative shrink-0">
-        <Link href="/chat-settings" className="text-neutral-500 hover:text-neutral-700 transition-colors relative z-10">
+    <div className="flex h-full flex-1 flex-col overflow-hidden bg-[#F8FAFC]">
+      <header className="relative flex shrink-0 items-center justify-between border-b border-neutral-100 bg-white px-4 py-4 shadow-sm md:px-6">
+        <Link href="/chat-settings" className="relative z-10 text-neutral-500 transition-colors hover:text-neutral-700">
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-sm md:text-base font-semibold text-neutral-900 absolute left-1/2 -translate-x-1/2 w-full text-center px-12 pointer-events-none">Privacy Settings</h1>
-        <div className="w-8 relative z-10" />
+        <h1 className="pointer-events-none absolute left-1/2 w-full -translate-x-1/2 px-12 text-center text-sm font-semibold text-neutral-900 md:text-base">
+          Privacy Settings
+        </h1>
+        <div className="relative z-10 w-8" />
       </header>
 
       <div className="flex-1 overflow-y-auto p-4 md:p-8">
-        <div className="max-w-xl mx-auto space-y-6 md:space-y-8">
+        <div className="mx-auto max-w-3xl space-y-6">
           <div className="space-y-2 text-center sm:text-left">
-            <h2 className="text-2xl md:text-3xl font-bold text-neutral-900">Privacy Settings</h2>
-            <p className="text-sm text-neutral-500">Manage how others interact with you and control your visibility.</p>
+            <h2 className="text-2xl font-bold text-neutral-900 md:text-3xl">Privacy Settings</h2>
+            <p className="text-sm text-neutral-500">
+              Review the same privacy options you picked during onboarding and update them any time.
+            </p>
           </div>
 
-          <div className="bg-white rounded-2xl md:rounded-3xl border border-neutral-100 p-5 md:p-8 shadow-sm space-y-6 md:space-y-8">
+          <div className="space-y-6 rounded-[28px] border border-neutral-100 bg-white p-5 shadow-sm md:p-8">
             <div className="space-y-6">
               <div className="space-y-1">
                 <h3 className="text-lg font-bold text-neutral-900">Who can message me</h3>
-                <p className="text-sm text-neutral-500">Select which groups of users can send you direct messages.</p>
+                <p className="text-sm text-neutral-500">Choose which groups of users can send you direct messages.</p>
               </div>
 
               <RadioGroup
-                value={messagePreference}
-                onValueChange={value => setMessagePreference(value as 'everyone' | 'contacts' | 'nobody')}
+                value={settings.messagePreference}
+                onValueChange={value => setSettings(current => ({
+                  ...current,
+                  messagePreference: value as UserPrivacySettings['messagePreference'],
+                }))}
                 className="gap-2"
               >
-                {preferences.map(pref => (
+                {messagePreferences.map(preference => (
                   <Label
-                    key={pref.id}
-                    htmlFor={pref.id}
-                    className="flex items-start gap-4 p-4 rounded-2xl hover:bg-neutral-50 transition-colors cursor-pointer group border border-transparent has-[:focus-visible]:border-ring"
+                    key={preference.id}
+                    htmlFor={preference.id}
+                    className="flex cursor-pointer items-start gap-4 rounded-2xl border border-transparent p-4 transition-colors hover:bg-neutral-50 has-[:focus-visible]:border-ring"
                   >
                     <div className="mt-1">
-                      <RadioGroupItem value={pref.id} id={pref.id} className="border-neutral-200" />
+                      <RadioGroupItem value={preference.id} id={preference.id} className="border-neutral-200" />
                     </div>
                     <div className="space-y-1">
-                      <p className="text-sm font-bold text-neutral-900">{pref.title}</p>
-                      <p className="text-xs text-neutral-500 font-normal">{pref.description}</p>
+                      <p className="text-sm font-bold text-neutral-900">{preference.title}</p>
+                      <p className="text-xs font-normal text-neutral-500">{preference.description}</p>
                     </div>
                   </Label>
                 ))}
               </RadioGroup>
             </div>
 
-            <div className="h-[1px] bg-neutral-100" />
+            <div className="h-px bg-neutral-100" />
 
-            <div className="flex items-center justify-between">
-              <div className="space-y-1 pr-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-base font-bold text-neutral-900 leading-none">Enable Anonymous Mode</h3>
-                  <span className="px-3 py-0.5 bg-cyan-50 text-cyan-600 text-[10px] font-bold rounded-full uppercase tracking-wider">Recommended</span>
+            <div className="space-y-4">
+              {privacyToggleOptions.map(option => (
+                <div key={option.key} className="flex items-center justify-between gap-4 rounded-2xl border border-neutral-100 bg-neutral-50/60 p-4">
+                  <div className="space-y-1 pr-4">
+                    <h3 className="text-sm font-bold text-neutral-900">{option.title}</h3>
+                    <p className="text-xs leading-relaxed text-neutral-500">{option.description}</p>
+                  </div>
+                  <Switch
+                    checked={settings[option.key]}
+                    onCheckedChange={checked => setSettings(current => ({
+                      ...current,
+                      [option.key]: checked,
+                    }))}
+                    className="data-[state=checked]:bg-indigo-600"
+                  />
                 </div>
-                <p className="text-sm text-neutral-500 leading-relaxed">Hide your online status and read receipts automatically.</p>
-              </div>
-              <Switch checked={anonymousMode} onCheckedChange={setAnonymousMode} />
+              ))}
             </div>
 
-            <div className="h-[1px] bg-neutral-100" />
+            <div className="h-px bg-neutral-100" />
 
-            <Link href="#" className="flex items-center justify-between p-2 rounded-2xl hover:bg-neutral-50 transition-colors group">
+            <div className="flex items-center justify-between rounded-2xl border border-dashed border-neutral-200 p-4">
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 rounded-xl bg-neutral-50 flex items-center justify-center text-neutral-500 group-hover:bg-neutral-100 transition-colors">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-neutral-50 text-neutral-500">
                   <Ban size={20} />
                 </div>
                 <div className="space-y-0.5">
@@ -121,15 +189,21 @@ export default function PrivacySettingsPage() {
                   <p className="text-xs text-neutral-400">Coming soon</p>
                 </div>
               </div>
-              <ChevronRight size={20} className="text-neutral-300 group-hover:text-neutral-500 transition-all" />
-            </Link>
+            </div>
           </div>
 
-          <div className="flex items-center justify-center gap-4 text-xs font-medium">
-            <span className="text-neutral-400">Changes are saved automatically.</span>
-            <Link href="/privacy" className="text-indigo-600 hover:underline flex items-center gap-1">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <Link href="/privacy" className="text-xs font-medium text-indigo-600 hover:underline">
               Learn more about privacy
             </Link>
+            <Button
+              type="button"
+              onClick={() => void handleSave()}
+              disabled={!hasChanges || isSubmitting}
+              className="h-11 rounded-2xl bg-indigo-600 px-6 font-semibold text-white shadow-lg shadow-indigo-100 hover:bg-indigo-700"
+            >
+              {isSubmitting ? 'Saving...' : 'Save Privacy Settings'}
+            </Button>
           </div>
         </div>
       </div>

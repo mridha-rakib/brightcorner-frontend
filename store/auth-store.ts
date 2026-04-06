@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import type { PublicUser } from '@/lib/api/types'
+import type { AuthTwoFactorChallenge, PublicUser, SignInResponse } from '@/lib/api/types'
 
 import { apiClient, getApiErrorMessage, unwrapResponse } from '@/lib/api/client'
 
@@ -14,6 +14,37 @@ type SignUpInput = {
 type SignInInput = {
   identifier: string
   password: string
+}
+
+const TWO_FACTOR_CHALLENGE_STORAGE_KEY = 'brightcorner:two-factor-challenge'
+
+function readStoredTwoFactorChallenge(): AuthTwoFactorChallenge | null {
+  if (typeof window === 'undefined')
+    return null
+
+  const rawValue = window.sessionStorage.getItem(TWO_FACTOR_CHALLENGE_STORAGE_KEY)
+  if (!rawValue)
+    return null
+
+  try {
+    return JSON.parse(rawValue) as AuthTwoFactorChallenge
+  }
+  catch {
+    window.sessionStorage.removeItem(TWO_FACTOR_CHALLENGE_STORAGE_KEY)
+    return null
+  }
+}
+
+function persistTwoFactorChallenge(challenge: AuthTwoFactorChallenge | null) {
+  if (typeof window === 'undefined')
+    return
+
+  if (!challenge) {
+    window.sessionStorage.removeItem(TWO_FACTOR_CHALLENGE_STORAGE_KEY)
+    return
+  }
+
+  window.sessionStorage.setItem(TWO_FACTOR_CHALLENGE_STORAGE_KEY, JSON.stringify(challenge))
 }
 
 type OnboardingInput = {
@@ -34,13 +65,16 @@ type UpdateProfileInput = {
 
 type AuthState = {
   user: PublicUser | null
+  twoFactorChallenge: AuthTwoFactorChallenge | null
   isInitializing: boolean
   isSubmitting: boolean
   error: string | null
   initialize: () => Promise<void>
   fetchCurrentUser: () => Promise<PublicUser | null>
   signUp: (input: SignUpInput) => Promise<PublicUser>
-  signIn: (input: SignInInput) => Promise<PublicUser>
+  signIn: (input: SignInInput) => Promise<SignInResponse>
+  verifySignInTwoFactor: (code: string) => Promise<PublicUser>
+  resendSignInTwoFactorCode: () => Promise<AuthTwoFactorChallenge>
   signOut: () => Promise<void>
   forgotPassword: (email: string) => Promise<void>
   resetPassword: (token: string, password: string) => Promise<void>
@@ -55,6 +89,7 @@ type AuthState = {
   changeEmail: (newEmail: string) => Promise<PublicUser>
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>
   deleteAccount: (password: string) => Promise<void>
+  setTwoFactorChallenge: (challenge: AuthTwoFactorChallenge | null) => void
   clearError: () => void
 }
 
@@ -62,8 +97,9 @@ async function performRequest<T>(operation: () => Promise<T>): Promise<T> {
   return operation()
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
+  twoFactorChallenge: readStoredTwoFactorChallenge(),
   isInitializing: true,
   isSubmitting: false,
   error: null,
@@ -73,7 +109,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     try {
       const user = await unwrapResponse<PublicUser>(apiClient.get('/auth/me'))
-      set({ user, error: null, isInitializing: false })
+      persistTwoFactorChallenge(null)
+      set({ user, error: null, isInitializing: false, twoFactorChallenge: null })
     }
     catch {
       set({ user: null, isInitializing: false })
@@ -100,7 +137,8 @@ export const useAuthStore = create<AuthState>((set) => ({
       const user = await performRequest(() =>
         unwrapResponse<PublicUser>(apiClient.post('/auth/sign-up', input)),
       )
-      set({ user, isSubmitting: false })
+      persistTwoFactorChallenge(null)
+      set({ user, isSubmitting: false, twoFactorChallenge: null })
       return user
     }
     catch (error) {
@@ -114,11 +152,82 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isSubmitting: true, error: null })
 
     try {
-      const user = await performRequest(() =>
-        unwrapResponse<PublicUser>(apiClient.post('/auth/sign-in', input)),
+      const result = await performRequest(() =>
+        unwrapResponse<SignInResponse>(apiClient.post('/auth/sign-in', input)),
       )
-      set({ user, isSubmitting: false })
+
+      if (result.status === 'two_factor_required') {
+        persistTwoFactorChallenge(result.challenge)
+        set({
+          user: null,
+          isSubmitting: false,
+          twoFactorChallenge: result.challenge,
+        })
+        return result
+      }
+
+      persistTwoFactorChallenge(null)
+      set({
+        user: result.user,
+        isSubmitting: false,
+        twoFactorChallenge: null,
+      })
+      return result
+    }
+    catch (error) {
+      const message = getApiErrorMessage(error)
+      set({ error: message, isSubmitting: false })
+      throw new Error(message)
+    }
+  },
+
+  verifySignInTwoFactor: async (code) => {
+    const challenge = get().twoFactorChallenge
+    if (!challenge) {
+      const message = 'Two-factor verification has expired. Please sign in again.'
+      set({ error: message })
+      throw new Error(message)
+    }
+
+    set({ isSubmitting: true, error: null })
+
+    try {
+      const user = await unwrapResponse<PublicUser>(
+        apiClient.post('/auth/two-factor/verify', {
+          challengeToken: challenge.challengeToken,
+          code,
+        }),
+      )
+      persistTwoFactorChallenge(null)
+      set({ user, isSubmitting: false, twoFactorChallenge: null })
       return user
+    }
+    catch (error) {
+      const message = getApiErrorMessage(error)
+      set({ error: message, isSubmitting: false })
+      throw new Error(message)
+    }
+  },
+
+  resendSignInTwoFactorCode: async () => {
+    const challenge = get().twoFactorChallenge
+    if (!challenge) {
+      const message = 'Two-factor verification has expired. Please sign in again.'
+      set({ error: message })
+      throw new Error(message)
+    }
+
+    set({ isSubmitting: true, error: null })
+
+    try {
+      const nextChallenge = await unwrapResponse<AuthTwoFactorChallenge>(
+        apiClient.post('/auth/two-factor/resend', {
+          challengeToken: challenge.challengeToken,
+        }),
+      )
+      persistTwoFactorChallenge(nextChallenge)
+      set({ isSubmitting: false, twoFactorChallenge: nextChallenge })
+      return nextChallenge
     }
     catch (error) {
       const message = getApiErrorMessage(error)
@@ -132,7 +241,8 @@ export const useAuthStore = create<AuthState>((set) => ({
 
     try {
       await apiClient.post('/auth/sign-out')
-      set({ user: null, isSubmitting: false })
+      persistTwoFactorChallenge(null)
+      set({ user: null, isSubmitting: false, twoFactorChallenge: null })
     }
     catch (error) {
       const message = getApiErrorMessage(error)
@@ -276,13 +386,19 @@ export const useAuthStore = create<AuthState>((set) => ({
       await apiClient.delete('/users/me', {
         data: { password },
       })
-      set({ user: null, isSubmitting: false })
+      persistTwoFactorChallenge(null)
+      set({ user: null, isSubmitting: false, twoFactorChallenge: null })
     }
     catch (error) {
       const message = getApiErrorMessage(error)
       set({ error: message, isSubmitting: false })
       throw new Error(message)
     }
+  },
+
+  setTwoFactorChallenge: (challenge) => {
+    persistTwoFactorChallenge(challenge)
+    set({ twoFactorChallenge: challenge })
   },
 
   clearError: () => set({ error: null }),

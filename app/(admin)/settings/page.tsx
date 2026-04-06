@@ -38,31 +38,31 @@ export default function AdminSettingsPage() {
     ]
 
     return (
-        <div className="w-full max-w-4xl mx-auto py-8 px-4">
+        <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:py-8">
 
-            <h1 className="text-black text-4xl font-extrabold tracking-tight">Portal Settings</h1>
+            <h1 className="text-3xl font-extrabold tracking-tight text-black sm:text-4xl">Portal Settings</h1>
             {/* List Section */}
             <ul className="divide-y divide-neutral-50">
                 {settingsLinks.map((link) => (
                     <li key={link.name}>
                         <Link
                             href={link.href}
-                            className="flex items-center justify-between px-8 py-6 hover:bg-neutral-50/80 transition-all duration-300 group"
+                            className="group flex items-center justify-between px-4 py-5 transition-all duration-300 hover:bg-neutral-50/80 sm:px-6 md:px-8 md:py-6"
                         >
-                            <div className="flex items-center gap-5">
-                                <div className="w-12 h-12 rounded-2xl bg-neutral-50 flex items-center justify-center text-neutral-400 group-hover:bg-brand-muted group-hover:text-brand transition-all duration-300 shadow-inner">
+                            <div className="flex min-w-0 items-center gap-3 sm:gap-5">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-neutral-50 text-neutral-400 shadow-inner transition-all duration-300 group-hover:bg-brand-muted group-hover:text-brand sm:h-12 sm:w-12">
                                     <link.icon size={22} />
                                 </div>
-                                <div className="flex flex-col">
-                                    <span className="text-neutral-900 text-lg font-bold group-hover:translate-x-1 transition-transform duration-300">
+                                <div className="flex min-w-0 flex-col">
+                                    <span className="text-base font-bold text-neutral-900 transition-transform duration-300 group-hover:translate-x-1 sm:text-lg">
                                         {link.name}
                                     </span>
-                                    <span className="text-neutral-400 text-xs font-medium">
+                                    <span className="text-xs font-medium text-neutral-400">
                                         {link.description}
                                     </span>
                                 </div>
                             </div>
-                            <div className="w-10 h-10 rounded-full border border-neutral-100 flex items-center justify-center text-neutral-300 group-hover:border-brand group-hover:text-brand transition-all duration-300 bg-white">
+                            <div className="flex h-9 w-9 items-center justify-center rounded-full border border-neutral-100 bg-white text-neutral-300 transition-all duration-300 group-hover:border-brand group-hover:text-brand sm:h-10 sm:w-10">
                                 <ChevronRight size={18} />
                             </div>
                         </Link>

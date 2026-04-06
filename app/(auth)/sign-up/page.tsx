@@ -58,7 +58,7 @@ export default function SignUpPage() {
 
   return (
     <div className="min-h-screen grid md:grid-cols-2 bg-neutral-50/50">
-      <div className="hidden md:flex flex-col justify-center px-24 bg-white border-r border-neutral-100 shadow-2xl shadow-neutral-100 relative overflow-hidden">
+      <div className="relative hidden overflow-hidden border-r border-neutral-100 bg-white px-16 shadow-2xl shadow-neutral-100 md:flex md:flex-col md:justify-center lg:px-24">
         <div className="absolute top-12 left-12">
           <Link href="/" className="flex items-center gap-2 text-neutral-400 hover:text-neutral-900 transition-colors group">
             <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
@@ -70,8 +70,8 @@ export default function SignUpPage() {
           <p className="text-[10px] text-neutral-400 font-black tracking-[0.3em] uppercase mb-12">
             01 - Join the Network
           </p>
-          <h1 className="text-6xl font-light text-neutral-900 mb-4 tracking-tighter">Privacy is</h1>
-          <p className="text-6xl font-light text-neutral-300 mb-12 tracking-tighter">
+          <h1 className="mb-4 text-5xl font-light tracking-tighter text-neutral-900 lg:text-6xl">Privacy is</h1>
+          <p className="mb-12 text-5xl font-light tracking-tighter text-neutral-300 lg:text-6xl">
             a state of
             <span className="text-indigo-600 font-medium"> mind.</span>
           </p>
@@ -84,18 +84,18 @@ export default function SignUpPage() {
         <div className="absolute top-1/4 -left-24 w-64 h-64 bg-cyan-50/50 rounded-full blur-3xl opacity-50" />
       </div>
 
-      <div className="flex flex-col justify-center px-8 md:px-24 bg-white/50 backdrop-blur-xl">
+      <div className="flex flex-col justify-center bg-white/50 px-6 py-10 backdrop-blur-xl sm:px-8 md:px-16 lg:px-24">
         <div className="w-full max-w-md mx-auto py-12">
           <div className="mb-10">
             <div className="w-12 h-12 bg-indigo-600 rounded-2xl mb-8 flex items-center justify-center text-white shadow-xl shadow-indigo-100 rotate-3">
               <ShieldCheck size={22} strokeWidth={2.5} />
             </div>
-            <h2 className="text-4xl font-light text-neutral-900 mb-3 tracking-tighter">Create Account</h2>
+            <h2 className="mb-3 text-3xl font-light tracking-tighter text-neutral-900 sm:text-4xl">Create Account</h2>
             <p className="text-sm text-neutral-500 font-medium tracking-tight">Establish your identity on the secure network.</p>
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div className="space-y-2.5">
                 <Label className="text-[10px] font-black text-neutral-400 tracking-[0.2em] uppercase ml-1">
                   First Name

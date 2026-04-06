@@ -2,19 +2,54 @@ import { create } from 'zustand'
 
 import type {
   ChannelDetail,
+  ChannelJoinRequest,
+  ChannelJoinRequestReviewAction,
   ChannelMember,
   ChannelSummary,
   ChatListItem,
   ConversationSummary,
   MessageAttachment,
+  MessageListResponse,
   MessageResponse,
   PublicUser,
 } from '@/lib/api/types'
 
 import { apiClient, getApiErrorMessage, unwrapResponse } from '@/lib/api/client'
-import { resolveMessagePreview } from '@/lib/chat-media'
+import { normalizeMessageAttachments, resolveMessagePreview } from '@/lib/chat-media'
+import { useAuthStore } from '@/store/auth-store'
 
 let latestDirectoryRequestId = 0
+let latestJoinRequestRequestId = 0
+
+function normalizeMessage(message: MessageResponse): MessageResponse {
+  return {
+    ...message,
+    attachments: normalizeMessageAttachments(message.attachments),
+    replyTo: message.replyTo
+      ? {
+          ...message.replyTo,
+          attachments: normalizeMessageAttachments(message.replyTo.attachments),
+        }
+      : null,
+  }
+}
+
+function normalizeMessages(messages: MessageResponse[]): MessageResponse[] {
+  return messages.map(normalizeMessage)
+}
+
+function sortMessagesByCreatedAt(messages: MessageResponse[]): MessageResponse[] {
+  return [...messages].sort(
+    (firstMessage, secondMessage) => new Date(firstMessage.createdAt).getTime() - new Date(secondMessage.createdAt).getTime(),
+  )
+}
+
+function upsertMessageCollection(collection: MessageResponse[], message: MessageResponse): MessageResponse[] {
+  return sortMessagesByCreatedAt([
+    ...collection.filter(existingMessage => existingMessage.id !== message.id),
+    message,
+  ])
+}
 
 function sortChatsByLatestActivity(chats: ChatListItem[]): ChatListItem[] {
   return [...chats].sort((firstChat, secondChat) => {
@@ -27,6 +62,18 @@ function sortChatsByLatestActivity(chats: ChatListItem[]): ChatListItem[] {
 
 function resolveTypingKey(chatType: 'channel' | 'conversation', chatId: string): string {
   return `${chatType}:${chatId}`
+}
+
+function resolveStoreChatType(chatType: MessageResponse['chatType']): 'channel' | 'dm' {
+  return chatType === 'channel' ? 'channel' : 'dm'
+}
+
+function updateChatById(
+  chats: ChatListItem[],
+  chatId: string,
+  updater: (chat: ChatListItem) => ChatListItem,
+): ChatListItem[] {
+  return chats.map(chat => chat.id === chatId ? updater(chat) : chat)
 }
 
 type CreateChannelInput = {
@@ -49,6 +96,7 @@ type JoinRequestInput = {
 
 type SendMessageInput = {
   attachments?: MessageAttachment[]
+  replyToMessageId?: string
   text: string
 }
 
@@ -61,23 +109,35 @@ type ChatStore = {
   messages: MessageResponse[]
   pinnedMessages: MessageResponse[]
   members: ChannelMember[]
+  joinRequests: ChannelJoinRequest[]
   directoryUsers: PublicUser[]
   onlineUserIds: string[]
   typingUsersByChatKey: Record<string, PublicUser[]>
+  hasMoreMessages: boolean
   isLoadingChats: boolean
   isLoadingActiveChat: boolean
+  isLoadingJoinRequests: boolean
   isLoadingDirectory: boolean
+  isLoadingOlderMessages: boolean
   isSendingMessage: boolean
+  nextMessageCursor: string | null
   error: string | null
   hydrateChats: () => Promise<void>
+  loadOlderMessages: () => Promise<void>
   setActiveChatId: (id: string | null, type?: 'channel' | 'dm') => Promise<void>
+  markChatAsRead: (input: { chatId: string, chatType: 'channel' | 'dm' }) => Promise<void>
   joinChannel: (chatId: string) => Promise<void>
   submitJoinRequest: (chatId: string, input: JoinRequestInput) => Promise<void>
+  updateChannelSubscription: (chatId: string, subscribed: boolean) => Promise<ChannelDetail>
+  loadJoinRequests: (chatId: string) => Promise<void>
+  reviewJoinRequest: (chatId: string, requestId: string, action: ChannelJoinRequestReviewAction) => Promise<void>
   createChannel: (input: CreateChannelInput) => Promise<ChannelDetail>
   loadDirectory: (search?: string) => Promise<void>
   createDirectConversation: (participantUserId: string, pin?: string) => Promise<ConversationSummary>
   sendMessage: (input: SendMessageInput) => Promise<MessageResponse>
   receiveMessage: (message: MessageResponse) => void
+  updateMessage: (message: MessageResponse) => void
+  toggleReaction: (messageId: string, emoji: string) => Promise<MessageResponse>
   upsertChatSummary: (chat: ChatListItem) => void
   setPresenceSnapshot: (userIds: string[]) => void
   setUserPresence: (userId: string, isOnline: boolean) => void
@@ -93,28 +153,43 @@ type ChatStore = {
 }
 
 async function loadMessagesForChat(input: {
+  beforeMessageId?: string
   chatId: string
   chatType: 'channel' | 'dm'
-}): Promise<{ messages: MessageResponse[]; pinnedMessages: MessageResponse[] }> {
-  if (input.chatType === 'channel') {
-    const [messages, pinnedMessages] = await Promise.all([
-      unwrapResponse<MessageResponse[]>(apiClient.get('/messages', { params: { channelId: input.chatId } })),
-      unwrapResponse<MessageResponse[]>(apiClient.get('/messages', {
-        params: {
-          channelId: input.chatId,
-          pinnedOnly: true,
-        },
-      })),
-    ])
+  limit?: number
+  pinnedOnly?: boolean
+}): Promise<MessageListResponse> {
+  const params = input.chatType === 'channel'
+    ? {
+        beforeMessageId: input.beforeMessageId,
+        channelId: input.chatId,
+        limit: input.limit,
+        pinnedOnly: input.pinnedOnly,
+      }
+    : {
+        beforeMessageId: input.beforeMessageId,
+        conversationId: input.chatId,
+        limit: input.limit,
+        pinnedOnly: input.pinnedOnly,
+      }
 
-    return { messages, pinnedMessages }
+  const response = await unwrapResponse<MessageListResponse>(apiClient.get('/messages', { params }))
+
+  return {
+    ...response,
+    items: normalizeMessages(response.items),
   }
+}
 
-  const messages = await unwrapResponse<MessageResponse[]>(apiClient.get('/messages', {
-    params: { conversationId: input.chatId },
-  }))
+async function loadPinnedMessagesForChannel(chatId: string): Promise<MessageResponse[]> {
+  const response = await loadMessagesForChat({
+    chatId,
+    chatType: 'channel',
+    limit: 100,
+    pinnedOnly: true,
+  })
 
-  return { messages, pinnedMessages: [] }
+  return response.items
 }
 
 export const useChatStore = create<ChatStore>((set, get) => ({
@@ -126,13 +201,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   pinnedMessages: [],
   members: [],
+  joinRequests: [],
   directoryUsers: [],
   onlineUserIds: [],
   typingUsersByChatKey: {},
+  hasMoreMessages: false,
   isLoadingChats: false,
   isLoadingActiveChat: false,
+  isLoadingJoinRequests: false,
   isLoadingDirectory: false,
+  isLoadingOlderMessages: false,
   isSendingMessage: false,
+  nextMessageCursor: null,
   error: null,
 
   hydrateChats: async () => {
@@ -158,6 +238,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   setActiveChatId: async (id, type) => {
     if (!id) {
+      latestJoinRequestRequestId += 1
       set({
         activeChatId: null,
         activeChatType: null,
@@ -166,6 +247,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         messages: [],
         pinnedMessages: [],
         members: [],
+        joinRequests: [],
+        hasMoreMessages: false,
+        isLoadingJoinRequests: false,
+        isLoadingOlderMessages: false,
+        nextMessageCursor: null,
         typingUsersByChatKey: {},
       })
       return
@@ -176,53 +262,157 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (!resolvedType)
       return
 
+    latestJoinRequestRequestId += 1
     set({
       activeChatId: id,
       activeChatType: resolvedType,
       isLoadingActiveChat: true,
+      isLoadingJoinRequests: false,
+      joinRequests: [],
       error: null,
     })
 
     try {
       if (resolvedType === 'channel') {
-        const [channel, members, messageData] = await Promise.all([
+        const [channel, members, messageData, pinnedMessages] = await Promise.all([
           unwrapResponse<ChannelDetail>(apiClient.get(`/channels/${id}`)),
           unwrapResponse<ChannelMember[]>(apiClient.get(`/channels/${id}/members`)).catch(() => []),
-          loadMessagesForChat({ chatId: id, chatType: 'channel' }).catch(() => ({
-            messages: [],
-            pinnedMessages: [],
+          loadMessagesForChat({
+            chatId: id,
+            chatType: 'channel',
+            limit: 40,
+          }).catch(() => ({
+            items: [],
+            nextCursor: null,
           })),
+          loadPinnedMessagesForChannel(id).catch(() => []),
         ])
+
+        if (get().activeChatId !== id || get().activeChatType !== resolvedType)
+          return
 
         set({
           activeChannel: channel,
           activeConversation: null,
           members,
-          messages: messageData.messages,
-          pinnedMessages: messageData.pinnedMessages,
+          joinRequests: [],
+          hasMoreMessages: Boolean(messageData.nextCursor),
+          messages: messageData.items,
+          nextMessageCursor: messageData.nextCursor,
+          pinnedMessages,
           isLoadingActiveChat: false,
         })
+
+        if (channel.joinStatus === 'joined')
+          void get().markChatAsRead({ chatId: id, chatType: 'channel' })
+
         return
       }
 
       const [conversation, messageData] = await Promise.all([
         unwrapResponse<ConversationSummary>(apiClient.get(`/conversations/${id}`)),
-        loadMessagesForChat({ chatId: id, chatType: 'dm' }),
+        loadMessagesForChat({
+          chatId: id,
+          chatType: 'dm',
+          limit: 40,
+        }),
       ])
+
+      if (get().activeChatId !== id || get().activeChatType !== resolvedType)
+        return
 
       set({
         activeConversation: conversation,
         activeChannel: null,
         members: [],
-        messages: messageData.messages,
+        joinRequests: [],
+        hasMoreMessages: Boolean(messageData.nextCursor),
+        messages: messageData.items,
+        nextMessageCursor: messageData.nextCursor,
         pinnedMessages: [],
         isLoadingActiveChat: false,
       })
+
+      void get().markChatAsRead({ chatId: id, chatType: 'dm' })
     }
     catch (error) {
       set({
         error: getApiErrorMessage(error),
         isLoadingActiveChat: false,
+      })
+    }
+  },
+
+  markChatAsRead: async ({ chatId, chatType }) => {
+    const currentUserId = useAuthStore.getState().user?.id
+    if (!currentUserId)
+      return
+
+    set((state) => {
+      const chats = updateChatById(state.chats, chatId, chat => ({ ...chat, unread: 0 }))
+      const nextState: Partial<ChatStore> = { chats }
+
+      if (chatType === 'channel' && state.activeChannel?.id === chatId) {
+        nextState.activeChannel = {
+          ...state.activeChannel,
+          unread: 0,
+        }
+      }
+
+      if (chatType === 'dm' && state.activeConversation?.id === chatId) {
+        nextState.activeConversation = {
+          ...state.activeConversation,
+          unread: 0,
+        }
+      }
+
+      return nextState
+    })
+
+    try {
+      await apiClient.post('/messages/read', chatType === 'channel'
+        ? { channelId: chatId }
+        : { conversationId: chatId })
+    }
+    catch {
+      // Ignore background read-sync failures. The next hydrate will reconcile counts.
+    }
+  },
+
+  loadOlderMessages: async () => {
+    const { activeChatId, activeChatType, isLoadingOlderMessages, nextMessageCursor } = get()
+    if (!activeChatId || !activeChatType || !nextMessageCursor || isLoadingOlderMessages)
+      return
+
+    set({ isLoadingOlderMessages: true, error: null })
+
+    try {
+      const messageData = await loadMessagesForChat({
+        beforeMessageId: nextMessageCursor,
+        chatId: activeChatId,
+        chatType: activeChatType,
+        limit: 40,
+      })
+
+      if (get().activeChatId !== activeChatId || get().activeChatType !== activeChatType) {
+        set({ isLoadingOlderMessages: false })
+        return
+      }
+
+      set(state => ({
+        hasMoreMessages: Boolean(messageData.nextCursor),
+        isLoadingOlderMessages: false,
+        messages: sortMessagesByCreatedAt([
+          ...messageData.items,
+          ...state.messages,
+        ]),
+        nextMessageCursor: messageData.nextCursor,
+      }))
+    }
+    catch (error) {
+      set({
+        error: getApiErrorMessage(error),
+        isLoadingOlderMessages: false,
       })
     }
   },
@@ -252,6 +442,72 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     catch (error) {
       set({ error: getApiErrorMessage(error) })
       throw error
+    }
+  },
+
+  updateChannelSubscription: async (chatId, subscribed) => {
+    set({ error: null })
+
+    try {
+      const channel = await unwrapResponse<ChannelDetail>(
+        apiClient.patch(`/channels/${chatId}/subscription`, { subscribed }),
+      )
+
+      get().upsertChatSummary(channel)
+      return channel
+    }
+    catch (error) {
+      const message = getApiErrorMessage(error)
+      set({ error: message })
+      throw new Error(message)
+    }
+  },
+
+  loadJoinRequests: async (chatId) => {
+    const requestId = ++latestJoinRequestRequestId
+    set({ error: null, isLoadingJoinRequests: true })
+
+    try {
+      const joinRequests = await unwrapResponse<ChannelJoinRequest[]>(
+        apiClient.get(`/channels/${chatId}/join-requests`),
+      )
+
+      if (requestId !== latestJoinRequestRequestId)
+        return
+
+      set({
+        joinRequests,
+        isLoadingJoinRequests: false,
+      })
+    }
+    catch (error) {
+      if (requestId !== latestJoinRequestRequestId)
+        return
+
+      const message = getApiErrorMessage(error)
+      set({
+        error: message,
+        isLoadingJoinRequests: false,
+      })
+      throw new Error(message)
+    }
+  },
+
+  reviewJoinRequest: async (chatId, requestId, action) => {
+    set({ error: null })
+
+    try {
+      await unwrapResponse<ChannelJoinRequest>(
+        apiClient.patch(`/channels/${chatId}/join-requests/${requestId}`, { action }),
+      )
+      await get().hydrateChats()
+      await get().setActiveChatId(chatId, 'channel')
+      await get().loadJoinRequests(chatId)
+    }
+    catch (error) {
+      const message = getApiErrorMessage(error)
+      set({ error: message })
+      throw new Error(message)
     }
   },
 
@@ -313,12 +569,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         return {
           chats: sortChatsByLatestActivity([conversation, ...existingChats]),
           activeChatId: conversation.id,
-          activeChatType: 'dm',
+          activeChatType: 'dm' as const,
           activeConversation: conversation,
           activeChannel: null,
           members: [],
+          joinRequests: [],
           messages: [],
           pinnedMessages: [],
+          hasMoreMessages: false,
+          nextMessageCursor: null,
         }
       })
 
@@ -343,10 +602,12 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
     try {
       const payload = activeChatType === 'channel'
-        ? { attachments, channelId: activeChatId, text: trimmedText }
-        : { attachments, conversationId: activeChatId, text: trimmedText }
+        ? { attachments, channelId: activeChatId, replyToMessageId: input.replyToMessageId, text: trimmedText }
+        : { attachments, conversationId: activeChatId, replyToMessageId: input.replyToMessageId, text: trimmedText }
 
-      const message = await unwrapResponse<MessageResponse>(apiClient.post('/messages', payload))
+      const message = normalizeMessage(
+        await unwrapResponse<MessageResponse>(apiClient.post('/messages', payload)),
+      )
       get().receiveMessage(message)
       set({ isSendingMessage: false })
       return message
@@ -361,67 +622,112 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   receiveMessage: (message) => {
+    const normalizedMessage = normalizeMessage(message)
+    const currentUserId = useAuthStore.getState().user?.id
+    const isOwnMessage = normalizedMessage.sender.id === currentUserId
+    const currentState = get()
+    const isActiveMessage = currentState.activeChatId === normalizedMessage.chatId
+      && (
+        (currentState.activeChatType === 'channel' && normalizedMessage.chatType === 'channel')
+        || (currentState.activeChatType === 'dm' && normalizedMessage.chatType === 'conversation')
+      )
+
     set((state) => {
       const nextState: Partial<ChatStore> = {}
-      const isActiveMessage = state.activeChatId === message.chatId
-        && (
-          (state.activeChatType === 'channel' && message.chatType === 'channel')
-          || (state.activeChatType === 'dm' && message.chatType === 'conversation')
-        )
 
       if (isActiveMessage) {
-        const existingMessage = state.messages.find(existing => existing.id === message.id)
-        if (!existingMessage) {
-          nextState.messages = [...state.messages, message].sort(
-            (firstMessage, secondMessage) => new Date(firstMessage.createdAt).getTime() - new Date(secondMessage.createdAt).getTime(),
-          )
-        }
-
-        if (message.pinned) {
-          const existingPinnedMessage = state.pinnedMessages.find(existing => existing.id === message.id)
-          if (!existingPinnedMessage)
-            nextState.pinnedMessages = [...state.pinnedMessages, message]
-        }
-
+        nextState.messages = upsertMessageCollection(state.messages, normalizedMessage)
+        nextState.pinnedMessages = normalizedMessage.pinned
+          ? upsertMessageCollection(state.pinnedMessages, normalizedMessage)
+          : state.pinnedMessages.filter(existing => existing.id !== normalizedMessage.id)
         nextState.typingUsersByChatKey = {
           ...state.typingUsersByChatKey,
-          [resolveTypingKey(message.chatType, message.chatId)]: [],
+          [resolveTypingKey(normalizedMessage.chatType, normalizedMessage.chatId)]: [],
         }
       }
 
-      const chatIndex = state.chats.findIndex(chat => chat.id === message.chatId)
+      const chatIndex = state.chats.findIndex(chat => chat.id === normalizedMessage.chatId)
       if (chatIndex >= 0) {
         const updatedChats = [...state.chats]
         const currentChat = updatedChats[chatIndex]
-        const preview = resolveMessagePreview(message)
+        const preview = resolveMessagePreview(normalizedMessage)
 
         updatedChats[chatIndex] = {
           ...currentChat,
           lastMessage: preview,
-          lastMessageAt: message.createdAt,
+          lastMessageAt: normalizedMessage.createdAt,
+          unread: isActiveMessage || isOwnMessage ? 0 : currentChat.unread + 1,
         }
 
         nextState.chats = sortChatsByLatestActivity(updatedChats)
 
-        if (message.chatType === 'channel' && state.activeChannel?.id === message.chatId) {
+        if (normalizedMessage.chatType === 'channel' && state.activeChannel?.id === normalizedMessage.chatId) {
           nextState.activeChannel = {
             ...state.activeChannel,
             lastMessage: preview,
-            lastMessageAt: message.createdAt,
+            lastMessageAt: normalizedMessage.createdAt,
+            unread: 0,
           }
         }
 
-        if (message.chatType === 'conversation' && state.activeConversation?.id === message.chatId) {
+        if (normalizedMessage.chatType === 'conversation' && state.activeConversation?.id === normalizedMessage.chatId) {
           nextState.activeConversation = {
             ...state.activeConversation,
             lastMessage: preview,
-            lastMessageAt: message.createdAt,
+            lastMessageAt: normalizedMessage.createdAt,
+            unread: 0,
           }
         }
       }
 
       return nextState
     })
+
+    if (isActiveMessage && !isOwnMessage) {
+      void get().markChatAsRead({
+        chatId: normalizedMessage.chatId,
+        chatType: resolveStoreChatType(normalizedMessage.chatType),
+      })
+    }
+  },
+
+  updateMessage: (message) => {
+    const normalizedMessage = normalizeMessage(message)
+
+    set((state) => {
+      const isActiveMessage = state.activeChatId === normalizedMessage.chatId
+        && (
+          (state.activeChatType === 'channel' && normalizedMessage.chatType === 'channel')
+          || (state.activeChatType === 'dm' && normalizedMessage.chatType === 'conversation')
+        )
+
+      if (!isActiveMessage)
+        return {}
+
+      return {
+        messages: upsertMessageCollection(state.messages, normalizedMessage),
+        pinnedMessages: normalizedMessage.pinned
+          ? upsertMessageCollection(state.pinnedMessages, normalizedMessage)
+          : state.pinnedMessages.filter(existing => existing.id !== normalizedMessage.id),
+      }
+    })
+  },
+
+  toggleReaction: async (messageId, emoji) => {
+    set({ error: null })
+
+    try {
+      const message = normalizeMessage(
+        await unwrapResponse<MessageResponse>(apiClient.post(`/messages/${messageId}/reactions`, { emoji })),
+      )
+      get().updateMessage(message)
+      return message
+    }
+    catch (error) {
+      const message = getApiErrorMessage(error)
+      set({ error: message })
+      throw new Error(message)
+    }
   },
 
   upsertChatSummary: (chat) => {
@@ -482,6 +788,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearSelection: () => {
+    latestJoinRequestRequestId += 1
     set({
       activeChatId: null,
       activeChatType: null,
@@ -490,11 +797,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       pinnedMessages: [],
       members: [],
+      joinRequests: [],
+      hasMoreMessages: false,
+      isLoadingJoinRequests: false,
+      isLoadingOlderMessages: false,
+      nextMessageCursor: null,
       typingUsersByChatKey: {},
     })
   },
 
   reset: () => {
+    latestJoinRequestRequestId += 1
     set({
       chats: [],
       activeChatId: null,
@@ -504,13 +817,18 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [],
       pinnedMessages: [],
       members: [],
+      joinRequests: [],
       directoryUsers: [],
       onlineUserIds: [],
       typingUsersByChatKey: {},
+      hasMoreMessages: false,
       isLoadingChats: false,
       isLoadingActiveChat: false,
+      isLoadingJoinRequests: false,
       isLoadingDirectory: false,
+      isLoadingOlderMessages: false,
       isSendingMessage: false,
+      nextMessageCursor: null,
       error: null,
     })
   },

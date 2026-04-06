@@ -13,11 +13,11 @@ function ChatLayoutContent({ children }: { children: React.ReactNode }) {
     const showSidebarOnMobile = isMainChatPage && !activeChatId
 
     return (
-        <div className="flex h-screen bg-white overflow-hidden">
-            <div className={`${showSidebarOnMobile ? 'flex' : 'hidden md:flex'} w-full md:w-80 h-full shrink-0`}>
+        <div className="flex h-[100dvh] min-h-screen min-h-0 bg-white overflow-hidden">
+            <div className={`${showSidebarOnMobile ? 'flex' : 'hidden md:flex'} h-full min-h-0 w-full shrink-0 min-w-0 md:w-80`}>
                 <Sidebar />
             </div>
-            <main className={`${showSidebarOnMobile ? 'hidden md:flex' : 'flex'} flex-1 flex flex-col min-w-0 overflow-hidden`}>
+            <main className={`${showSidebarOnMobile ? 'hidden md:flex' : 'flex'} min-h-0 min-w-0 flex-1 flex-col overflow-hidden`}>
                 {children}
             </main>
         </div>

@@ -1,21 +1,35 @@
 'use client'
 
+import { startTransition, useState } from 'react'
 import { Search, Plus, Settings, Hash, User, Lock } from 'lucide-react'
-import { useState } from 'react'
 import { useChat } from '@/context/chat-context'
 import { useAuthStore } from '@/store/auth-store'
 import Image from 'next/image'
 import Link from 'next/link'
+import { usePathname, useRouter } from 'next/navigation'
 
 export function Sidebar() {
     const { chats, activeChatId, setActiveChatId } = useChat()
     const currentUser = useAuthStore(state => state.user)
+    const pathname = usePathname()
+    const router = useRouter()
     const [activeTab, setActiveTab] = useState('channels')
     const [searchQuery, setSearchQuery] = useState('')
+
+    function handleChatSelect(chatId: string, chatType: 'channel' | 'dm') {
+        void setActiveChatId(chatId, chatType)
+
+        if (pathname !== '/chat') {
+            startTransition(() => {
+                router.push('/chat')
+            })
+        }
+    }
+
     return (
-        <aside className="w-full h-full bg-white md:border-r border-neutral-200 flex flex-col">
+        <aside className="flex h-full w-full flex-col bg-white md:border-r border-neutral-200">
             {/* Header */}
-            <div className="p-6">
+            <div className="p-4 sm:p-5 md:p-6">
                 <Link href="/" className="flex items-center gap-2 mb-6 hover:opacity-80 transition-opacity">
                     <Image
                         src="/logo2.png"
@@ -38,7 +52,7 @@ export function Sidebar() {
                     />
                 </div>
 
-                <div className="flex border-b border-neutral-100 mb-4">
+                <div className="mb-4 flex border-b border-neutral-100">
                     {[
                         { name: 'All Chats', id: 'all' },
                         { name: 'Channels', id: 'channels' },
@@ -60,7 +74,7 @@ export function Sidebar() {
             </div>
 
             {/* Chat List */}
-            <div className="flex-1 overflow-y-auto px-2">
+            <div className="flex-1 overflow-y-auto px-2 pb-2">
                 <div className="space-y-1">
                     {chats
                         .filter(chat => {
@@ -76,12 +90,12 @@ export function Sidebar() {
                         .map((chat) => (
                             <button
                                 key={chat.id}
-                                onClick={() => void setActiveChatId(chat.id, chat.type)}
+                                onClick={() => void handleChatSelect(chat.id, chat.type)}
                                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all group ${activeChatId === chat.id ? 'bg-indigo-50/50 ring-1 ring-indigo-100' : 'hover:bg-neutral-50'
                                     }`}
                             >
-                                <div className="relative">
-                                    <div className="w-10 h-10 rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center text-neutral-500">
+                                <div className="relative shrink-0">
+                                    <div className="w-10 h-10 shrink-0 overflow-hidden rounded-full bg-neutral-100 ring-1 ring-neutral-100 flex items-center justify-center text-neutral-500">
                                         {chat.type === 'channel'
                                             ? (
                                                 <Hash size={20} />
@@ -91,7 +105,7 @@ export function Sidebar() {
                                                   <img
                                                       src={chat.participant.profile.avatarUrl}
                                                       alt={chat.name}
-                                                      className="absolute inset-0 h-full w-full object-cover"
+                                                      className="absolute inset-0 h-full w-full object-cover object-center"
                                                   />
                                                 )
                                               : <User size={20} />}
@@ -130,7 +144,7 @@ export function Sidebar() {
 
             {/* Actions */}
             {activeTab === 'channels' && (
-                <div className="p-4 bg-white border-t border-neutral-100">
+                <div className="border-t border-neutral-100 bg-white p-4">
                     <Link
                         href="/create-channel"
                         className="w-full flex items-center justify-center gap-2 py-3 border-2 border-indigo-600 rounded-xl text-indigo-600 text-sm font-bold hover:bg-indigo-50 transition-colors"
@@ -142,7 +156,7 @@ export function Sidebar() {
             )}
 
             {activeTab === 'dms' && (
-                <div className="p-4 bg-white border-t border-neutral-100">
+                <div className="border-t border-neutral-100 bg-white p-4">
                     <Link
                         href="/new-message"
                         className="w-full flex items-center justify-center gap-3 py-3.5 border-2 border-indigo-600 rounded-xl text-indigo-600 text-sm font-bold hover:bg-indigo-50 transition-colors"
@@ -154,13 +168,13 @@ export function Sidebar() {
             )}
 
             {/* User Profile */}
-            <div className="p-4 flex items-center justify-between border-t border-neutral-100">
+            <div className="flex items-center justify-between border-t border-neutral-100 p-3 sm:p-4">
                 <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-full bg-neutral-200 overflow-hidden">
+                    <div className="w-9 h-9 shrink-0 rounded-full bg-neutral-100 ring-1 ring-neutral-100 overflow-hidden">
                         <img
                             src={currentUser?.profile.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.fullName || 'BrightCorner'}`}
                             alt={currentUser?.fullName || 'BrightCorner user'}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover object-center"
                         />
                     </div>
                     <div className="min-w-0">

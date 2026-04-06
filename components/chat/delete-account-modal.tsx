@@ -41,7 +41,7 @@ export function DeleteAccountModal({ isOpen, onOpenChange }: DeleteAccountModalP
 
     return (
         <Dialog open={isOpen} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-[440px] p-0 overflow-hidden border-none rounded-[32px] shadow-2xl">
+            <DialogContent className="w-[95vw] max-w-[440px] overflow-hidden rounded-[32px] border-none p-0 shadow-2xl">
                 <div className="bg-white p-8 md:p-10 space-y-8">
 
                     <div className="flex justify-center">

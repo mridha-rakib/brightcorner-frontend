@@ -6,10 +6,10 @@ import { Twitter } from 'lucide-react'
 export function Footer() {
     return (
         <footer className="border-t border-neutral-200 py-12">
-            <div className="container mx-auto px-5 md:px-0">
+            <div className="container mx-auto px-4 sm:px-5 md:px-0">
 
                 {/* Main row */}
-                <div className="flex flex-col md:flex-row justify-between gap-12 mb-12">
+                <div className="mb-12 flex flex-col justify-between gap-12 md:flex-row">
 
                     {/* Brand */}
                     <div className="max-w-xs">
@@ -20,7 +20,7 @@ export function Footer() {
                     </div>
 
                     {/* Nav columns */}
-                    <div className="flex gap-16">
+                    <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-3 lg:gap-16">
                         <div>
                             <p className="text-xs font-semibold text-neutral-900 tracking-widest uppercase mb-4">PRODUCT</p>
                             <ul className="space-y-3">
@@ -48,7 +48,7 @@ export function Footer() {
                 </div>
 
                 {/* Bottom bar */}
-                <div className="border-t border-neutral-100 pt-8 flex items-center justify-between">
+                <div className="flex flex-col gap-4 border-t border-neutral-100 pt-8 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-xs text-neutral-400">© 2026 BrightCorner. Privacy is fundamental.</p>
                     <Link href="#" className="text-neutral-400 hover:text-neutral-700 transition-colors">
                         <Twitter size={14} />

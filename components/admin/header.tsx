@@ -22,7 +22,7 @@ export function AdminHeader({ toggleSidebar }: AdminHeaderProps) {
         .toUpperCase()
 
     return (
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-neutral-200 bg-white px-6 animate-slide-down">
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-neutral-200 bg-white px-4 sm:px-6 animate-slide-down">
             <div className="flex items-center gap-4">
                 <Button
                     variant="ghost"
@@ -38,17 +38,17 @@ export function AdminHeader({ toggleSidebar }: AdminHeaderProps) {
                     <input
                         type="text"
                         placeholder="Search dashboard..."
-                        className="w-64 rounded-xl bg-neutral-100 py-2 pl-10 pr-4 text-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary/20"
+                        className="w-56 rounded-xl bg-neutral-100 py-2 pl-10 pr-4 text-sm transition-all focus:outline-none focus:ring-1 focus:ring-primary/20 lg:w-64"
                     />
                 </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2">
                 <Button variant="ghost" size="icon" className="relative rounded-xl text-neutral-500 hover:bg-neutral-100 hover:text-neutral-700">
                     <Bell size={20} />
                     <span className="absolute right-2.5 top-2.5 h-2 w-2 rounded-full border-2 border-white bg-red-500" />
                 </Button>
-                <div className="mx-2 h-6 w-px bg-neutral-200" />
+                <div className="mx-1 hidden h-6 w-px bg-neutral-200 sm:mx-2 sm:block" />
                 <Link href="/profile">
                     <Button variant="ghost" className="flex items-center gap-3 rounded-xl p-1.5 hover:bg-neutral-100">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">

@@ -90,10 +90,45 @@ export type PublicUser = {
   updatedAt: string
 }
 
+export type AuthTwoFactorChallenge = {
+  requiresTwoFactor: true
+  challengeToken: string
+  deliveryLabel: string
+  deliveryMethod: 'email'
+  expiresAt: string | null
+  lastSentAt: string | null
+}
+
+export type SignInResponse
+  = | {
+      status: 'authenticated'
+      user: PublicUser
+    }
+    | {
+      status: 'two_factor_required'
+      challenge: AuthTwoFactorChallenge
+    }
+
 export type ChannelQuestion = {
   questionId: string
   text: string
   options: string[]
+}
+
+export type ChannelJoinRequestReviewAction = 'approve' | 'reject'
+
+export type ChannelJoinRequest = {
+  id: string
+  channelId: string
+  answers: Array<{
+    questionId: string
+    answer: string
+  }>
+  reason?: string
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: string
+  updatedAt: string
+  requester: Pick<PublicUser, 'id' | 'firstName' | 'lastName' | 'fullName' | 'email' | 'profile'>
 }
 
 export type ChannelSummary = {
@@ -105,6 +140,8 @@ export type ChannelSummary = {
   isPublic: boolean
   isEncrypted: true
   joinStatus: 'joined' | 'not_joined' | 'pending'
+  isSubscribed: boolean
+  unread: number
   members: number
   totalAdmins: number
   online: number
@@ -131,9 +168,23 @@ export type ConversationSummary = {
   avatarUrl?: string
   isEncrypted: true
   isPinProtected: boolean
+  unread: number
   lastMessage: string | null
   lastMessageAt: string | null
   participant: PublicUser
+}
+
+export type MessageReactionSummary = {
+  count: number
+  emoji: string
+  reactedUserIds: string[]
+}
+
+export type MessageReplyReference = {
+  attachments: MessageAttachment[]
+  id: string
+  sender: Pick<PublicUser, 'id' | 'firstName' | 'lastName' | 'fullName' | 'profile'>
+  text: string
 }
 
 export type MessageResponse = {
@@ -143,9 +194,16 @@ export type MessageResponse = {
   chatId: string
   text: string
   pinned: boolean
+  reactions: MessageReactionSummary[]
+  replyTo: MessageReplyReference | null
   createdAt: string
   updatedAt: string
   sender: PublicUser
+}
+
+export type MessageListResponse = {
+  items: MessageResponse[]
+  nextCursor: string | null
 }
 
 export type LegalContent = {
