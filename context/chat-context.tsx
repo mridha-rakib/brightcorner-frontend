@@ -1,169 +1,678 @@
 'use client'
 
-import React, { createContext, useContext, useState, ReactNode } from 'react'
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
+import { io, type Socket } from 'socket.io-client'
+import { toast } from 'sonner'
+
+import type {
+  ChannelDetail,
+  ChannelQuestion,
+  ChatListItem,
+  ConversationSummary,
+  MessageResponse,
+  PublicUser,
+} from '@/lib/api/types'
+
+import { API_ORIGIN, apiClient, unwrapResponse } from '@/lib/api/client'
+import { formatChatTimestamp } from '@/lib/chat-format'
+import { VoiceCallOverlay } from '@/components/chat/voice-call-overlay'
+import { useAuthStore } from '@/store/auth-store'
+import { useChatStore } from '@/store/chat-store'
 
 export type ChatType = 'channel' | 'dm'
 export type JoinStatus = 'joined' | 'not_joined' | 'pending'
+export type MessageChatType = 'channel' | 'conversation'
+export type CallPhase = 'idle' | 'incoming' | 'outgoing' | 'connecting' | 'active'
+
+export type VoiceCallState = {
+  callId: string | null
+  conversationId: string | null
+  isMuted: boolean
+  participant: PublicUser | null
+  phase: CallPhase
+}
 
 export interface Chat {
-    id: number
-    name: string
-    type: ChatType
-    unread: number
-    lastMessage: string
-    time: string
-    active?: boolean
-    description?: string
-    members?: number
-    online?: number
-    isPublic?: boolean
-    joinStatus?: JoinStatus
-    totalAdmins?: number
-    isEncrypted?: boolean
+  id: string
+  name: string
+  type: ChatType
+  unread: number
+  lastMessage: string
+  time: string
+  active?: boolean
+  description?: string
+  members?: number
+  online?: number
+  isPublic?: boolean
+  joinStatus?: JoinStatus
+  totalAdmins?: number
+  isEncrypted?: boolean
+  questions?: ChannelQuestion[]
+  participant?: PublicUser
 }
 
-interface ChatContextType {
-    chats: Chat[]
-    activeChatId: number | null
-    setActiveChatId: (id: number | null) => void
-    activeChat: Chat | undefined
-    joinChannel: (chatId: number) => void
-    submitJoinRequest: (chatId: number, data: any) => void
+type TypingPayload = {
+  chatId: string
+  chatType: MessageChatType
+  isTyping: boolean
+  user: PublicUser
 }
 
-const initialChatsData: Chat[] = [
-    {
-        id: 1,
-        name: 'Product Design',
-        type: 'channel',
-        unread: 0,
-        lastMessage: 'Q4 Roadmap...',
-        time: '10:42 AM',
-        description: 'Design system discussions and handoffs.',
-        members: 128,
-        online: 14,
-        isPublic: true,
-        joinStatus: 'joined'
-    },
-    {
-        id: 2,
-        name: 'Engineering Team',
-        type: 'channel',
-        unread: 3,
-        lastMessage: 'Alex: Deployment successful',
-        time: '09:15 AM',
-        description: 'Technical implementation and architecture.',
-        members: 45,
-        online: 12,
-        isPublic: false,
-        joinStatus: 'joined'
-    },
-    {
-        id: 3,
-        name: 'Marketing Squad',
-        type: 'channel',
-        unread: 0,
-        lastMessage: 'Can we review the copy...',
-        time: 'Yesterday',
-        description: 'Brand and growth strategies.',
-        members: 20,
-        online: 5,
-        isPublic: true,
-        joinStatus: 'joined'
-    },
-    {
-        id: 4,
-        name: 'Sarah Connor',
-        type: 'dm',
-        unread: 0,
-        lastMessage: 'Sent an attachment.',
-        time: 'Mon',
-        description: 'Personal conversation with Sarah Connor.',
-        joinStatus: 'joined'
-    },
-    {
-        id: 5,
-        name: 'Operations',
-        type: 'channel',
-        unread: 0,
-        lastMessage: 'Weekly report is ready.',
-        time: 'Sun',
-        description: 'Internal operations and logistics.',
-        members: 10,
-        online: 2,
-        isPublic: false,
-        joinStatus: 'joined'
-    },
-    {
-        id: 6,
-        name: 'John Doe',
-        type: 'dm',
-        unread: 0,
-        lastMessage: 'Thanks for the update!',
-        time: 'Last Week',
-        description: 'Personal conversation with John Doe.',
-        joinStatus: 'joined'
-    },
-    {
-        id: 7,
-        name: 'Public Design Hub',
-        type: 'channel',
-        unread: 0,
-        lastMessage: 'Welcome to the hub!',
-        time: '10:55 AM',
-        description: 'A community space for discussing design systems, UI trends, and sharing daily inspiration. Open for everyone to learn and grow.',
-        members: 128,
-        online: 14,
-        isPublic: true,
-        joinStatus: 'not_joined'
-    },
-    {
-        id: 8,
-        name: 'Executive Strategy',
-        type: 'channel',
-        unread: 0,
-        lastMessage: 'Confidential roadmap...',
-        time: '11:20 AM',
-        description: 'High-level strategic planning and confidential quarterly roadmap discussions for the executive leadership team.',
-        members: 12,
-        totalAdmins: 3,
-        isEncrypted: true,
-        isPublic: false,
-        joinStatus: 'not_joined'
+type PresencePayload = {
+  isOnline: boolean
+  userId: string
+}
+
+type CallPartyPayload = {
+  callId: string
+  conversationId: string
+  initiatedAt: string
+  participant: PublicUser
+}
+
+type CallAcceptancePayload = {
+  answeredAt: string
+  answeredBy: string
+  callId: string
+  conversationId: string
+}
+
+type CallEndPayload = {
+  callId: string
+  conversationId: string
+  endedBy: string
+  reason: 'disconnected' | 'ended'
+}
+
+type CallSignalPayload = {
+  callId: string
+  conversationId: string
+  fromUserId: string
+  signal:
+    | { candidate: RTCIceCandidateInit, type: 'candidate' }
+    | { description: RTCSessionDescriptionInit, type: 'answer' | 'offer' }
+}
+
+type ChatRealtimeContextValue = {
+  callState: VoiceCallState
+  emitTyping: (chatType: MessageChatType, chatId: string, isTyping: boolean) => void
+  endVoiceCall: () => void
+  rejectVoiceCall: () => void
+  startVoiceCall: () => Promise<void>
+  toggleMute: () => void
+  typingUsers: PublicUser[]
+  answerVoiceCall: () => Promise<void>
+}
+
+const IDLE_CALL_STATE: VoiceCallState = {
+  callId: null,
+  conversationId: null,
+  isMuted: false,
+  participant: null,
+  phase: 'idle',
+}
+const EMPTY_TYPING_USERS: PublicUser[] = []
+
+const ChatRealtimeContext = createContext<ChatRealtimeContextValue | null>(null)
+
+function resolveTypingKey(chatType: MessageChatType, chatId: string): string {
+  return `${chatType}:${chatId}`
+}
+
+function toChatViewModel(chat: ChatListItem): Chat {
+  if (chat.type === 'channel') {
+    return {
+      id: chat.id,
+      name: chat.name,
+      type: 'channel',
+      unread: 0,
+      lastMessage: chat.lastMessage ?? '',
+      time: formatChatTimestamp(chat.lastMessageAt),
+      description: chat.description,
+      members: chat.members,
+      online: chat.online,
+      isPublic: chat.isPublic,
+      joinStatus: chat.joinStatus,
+      totalAdmins: chat.totalAdmins,
+      isEncrypted: chat.isEncrypted,
+      questions: 'questions' in chat ? chat.questions : undefined,
     }
-]
+  }
 
-const ChatContext = createContext<ChatContextType | undefined>(undefined)
+  return {
+    id: chat.id,
+    name: chat.name,
+    type: 'dm',
+    unread: 0,
+    lastMessage: chat.lastMessage ?? '',
+    time: formatChatTimestamp(chat.lastMessageAt),
+    isEncrypted: chat.isEncrypted,
+    joinStatus: 'joined',
+    participant: chat.participant,
+  }
+}
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-    const [chats, setChats] = useState<Chat[]>(initialChatsData)
-    const [activeChatId, setActiveChatId] = useState<number | null>(null)
+  const user = useAuthStore(state => state.user)
+  const hydrateChats = useChatStore(state => state.hydrateChats)
+  const reset = useChatStore(state => state.reset)
+  const setPresenceSnapshot = useChatStore(state => state.setPresenceSnapshot)
+  const setUserPresence = useChatStore(state => state.setUserPresence)
+  const receiveMessage = useChatStore(state => state.receiveMessage)
+  const upsertChatSummary = useChatStore(state => state.upsertChatSummary)
+  const setTypingState = useChatStore(state => state.setTypingState)
+  const activeChatId = useChatStore(state => state.activeChatId)
+  const activeChatType = useChatStore(state => state.activeChatType)
+  const activeConversation = useChatStore(state => state.activeConversation)
+  const typingUsersByChatKey = useChatStore(state => state.typingUsersByChatKey)
+  const typingUsers = useMemo(() => {
+    if (!activeChatId || !activeChatType)
+      return EMPTY_TYPING_USERS
 
-    const activeChat = chats.find(chat => chat.id === activeChatId)
+    const chatType = activeChatType === 'dm' ? 'conversation' : 'channel'
+    return typingUsersByChatKey[resolveTypingKey(chatType, activeChatId)] ?? EMPTY_TYPING_USERS
+  }, [activeChatId, activeChatType, typingUsersByChatKey])
 
-    const joinChannel = (chatId: number) => {
-        setChats(prev => prev.map(chat =>
-            chat.id === chatId ? { ...chat, joinStatus: 'joined' } : chat
-        ))
+  const socketRef = useRef<Socket | null>(null)
+  const typingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
+  const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
+  const localStreamRef = useRef<MediaStream | null>(null)
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
+  const callStateRef = useRef<VoiceCallState>(IDLE_CALL_STATE)
+  const activeConversationRef = useRef<ConversationSummary | null>(null)
+  const [callState, setCallState] = useState<VoiceCallState>(IDLE_CALL_STATE)
+
+  useEffect(() => {
+    callStateRef.current = callState
+  }, [callState])
+
+  useEffect(() => {
+    activeConversationRef.current = activeConversation
+  }, [activeConversation])
+
+  function clearTypingTimeouts(): void {
+    for (const timeout of typingTimeoutsRef.current.values())
+      clearTimeout(timeout)
+
+    typingTimeoutsRef.current.clear()
+  }
+
+  function cleanupCallResources(): void {
+    peerConnectionRef.current?.close()
+    peerConnectionRef.current = null
+
+    for (const track of localStreamRef.current?.getTracks() ?? [])
+      track.stop()
+
+    localStreamRef.current = null
+
+    if (remoteAudioRef.current) {
+      remoteAudioRef.current.pause()
+      remoteAudioRef.current.srcObject = null
     }
+  }
 
-    const submitJoinRequest = (chatId: number, data: any) => {
-        setChats(prev => prev.map(chat =>
-            chat.id === chatId ? { ...chat, joinStatus: 'pending' } : chat
-        ))
+  function resetCallState(): void {
+    cleanupCallResources()
+    setCallState(IDLE_CALL_STATE)
+  }
+
+  async function ensureChatSummary(chatType: MessageChatType, chatId: string): Promise<void> {
+    if (useChatStore.getState().chats.some(chat => chat.id === chatId))
+      return
+
+    try {
+      if (chatType === 'channel') {
+        const channel = await unwrapResponse<ChannelDetail>(apiClient.get(`/channels/${chatId}`))
+        upsertChatSummary(channel)
+        return
+      }
+
+      const conversation = await unwrapResponse<ConversationSummary>(apiClient.get(`/conversations/${chatId}`))
+      upsertChatSummary(conversation)
     }
+    catch {
+      // Ignore realtime summary sync failures. The next hydrate resolves it.
+    }
+  }
 
-    return (
-        <ChatContext.Provider value={{ chats, activeChatId, setActiveChatId, activeChat, joinChannel, submitJoinRequest }}>
-            {children}
-        </ChatContext.Provider>
+  async function ensureLocalStream(): Promise<MediaStream> {
+    if (localStreamRef.current)
+      return localStreamRef.current
+
+    if (!navigator.mediaDevices?.getUserMedia)
+      throw new Error('Voice calling is not supported in this browser.')
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+    localStreamRef.current = stream
+    return stream
+  }
+
+  function attachLocalTracks(peerConnection: RTCPeerConnection, stream: MediaStream): void {
+    const existingTrackIds = new Set(
+      peerConnection.getSenders()
+        .map(sender => sender.track?.id)
+        .filter((trackId): trackId is string => Boolean(trackId)),
     )
+
+    for (const track of stream.getTracks()) {
+      if (existingTrackIds.has(track.id))
+        continue
+
+      peerConnection.addTrack(track, stream)
+    }
+  }
+
+  function createPeerConnection(callId: string, conversationId: string): RTCPeerConnection {
+    if (peerConnectionRef.current)
+      return peerConnectionRef.current
+
+    const peerConnection = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    })
+
+    peerConnection.onicecandidate = (event) => {
+      if (!event.candidate || !socketRef.current)
+        return
+
+      socketRef.current.emit('call:signal', {
+        callId,
+        signal: {
+          candidate: event.candidate.toJSON(),
+          type: 'candidate',
+        },
+      })
+    }
+
+    peerConnection.ontrack = (event) => {
+      const [remoteStream] = event.streams
+      if (!remoteStream || !remoteAudioRef.current)
+        return
+
+      remoteAudioRef.current.srcObject = remoteStream
+      void remoteAudioRef.current.play().catch(() => {})
+      setCallState(current => ({ ...current, phase: 'active' }))
+    }
+
+    peerConnection.onconnectionstatechange = () => {
+      if (peerConnection.connectionState === 'connected') {
+        setCallState(current => ({ ...current, phase: 'active' }))
+        return
+      }
+
+      if (['closed', 'disconnected', 'failed'].includes(peerConnection.connectionState)) {
+        const currentCallId = callStateRef.current.callId
+        if (currentCallId && socketRef.current?.connected)
+          socketRef.current.emit('call:end', { callId: currentCallId })
+
+        resetCallState()
+      }
+    }
+
+    peerConnectionRef.current = peerConnection
+
+    void ensureLocalStream()
+      .then(stream => attachLocalTracks(peerConnection, stream))
+      .catch((error) => {
+        toast.error(error instanceof Error ? error.message : 'Unable to access the microphone.')
+        resetCallState()
+      })
+
+    return peerConnection
+  }
+
+  async function createOffer(callId: string, conversationId: string): Promise<void> {
+    const peerConnection = createPeerConnection(callId, conversationId)
+    const offer = await peerConnection.createOffer()
+    await peerConnection.setLocalDescription(offer)
+
+    socketRef.current?.emit('call:signal', {
+      callId,
+      signal: {
+        description: offer,
+        type: 'offer',
+      },
+    })
+  }
+
+  async function handleIncomingSignal(payload: CallSignalPayload): Promise<void> {
+    const currentCallState = callStateRef.current
+    if (currentCallState.callId !== payload.callId)
+      return
+
+    const peerConnection = createPeerConnection(payload.callId, payload.conversationId)
+
+    if (payload.signal.type === 'candidate') {
+      await peerConnection.addIceCandidate(payload.signal.candidate)
+      return
+    }
+
+    await peerConnection.setRemoteDescription(payload.signal.description)
+
+    if (payload.signal.type === 'offer') {
+      const answer = await peerConnection.createAnswer()
+      await peerConnection.setLocalDescription(answer)
+
+      socketRef.current?.emit('call:signal', {
+        callId: payload.callId,
+        signal: {
+          description: answer,
+          type: 'answer',
+        },
+      })
+    }
+  }
+
+  useEffect(() => {
+    if (!user) {
+      clearTypingTimeouts()
+      socketRef.current?.disconnect()
+      socketRef.current = null
+      reset()
+      resetCallState()
+      return
+    }
+
+    void hydrateChats()
+
+    const socket = io(API_ORIGIN, {
+      transports: ['websocket', 'polling'],
+      withCredentials: true,
+    })
+
+    socketRef.current = socket
+
+    socket.on('presence:snapshot', (payload: { userIds: string[] }) => {
+      setPresenceSnapshot(payload.userIds)
+    })
+
+    socket.on('presence:update', (payload: PresencePayload) => {
+      setUserPresence(payload.userId, payload.isOnline)
+    })
+
+    socket.on('message:created', (message: MessageResponse) => {
+      receiveMessage(message)
+      void ensureChatSummary(message.chatType, message.chatId)
+    })
+
+    socket.on('typing:update', (payload: TypingPayload) => {
+      setTypingState(payload)
+
+      const timeoutKey = `${payload.chatType}:${payload.chatId}:${payload.user.id}`
+      const existingTimeout = typingTimeoutsRef.current.get(timeoutKey)
+      if (existingTimeout)
+        clearTimeout(existingTimeout)
+
+      if (payload.isTyping) {
+        const timeout = setTimeout(() => {
+          setTypingState({ ...payload, isTyping: false })
+          typingTimeoutsRef.current.delete(timeoutKey)
+        }, 2500)
+
+        typingTimeoutsRef.current.set(timeoutKey, timeout)
+        return
+      }
+
+      typingTimeoutsRef.current.delete(timeoutKey)
+    })
+
+    socket.on('call:incoming', (payload: CallPartyPayload) => {
+      if (callStateRef.current.phase !== 'idle') {
+        socket.emit('call:reject', { callId: payload.callId })
+        return
+      }
+
+      setCallState({
+        callId: payload.callId,
+        conversationId: payload.conversationId,
+        isMuted: false,
+        participant: payload.participant,
+        phase: 'incoming',
+      })
+    })
+
+    socket.on('call:outgoing', (payload: CallPartyPayload) => {
+      setCallState({
+        callId: payload.callId,
+        conversationId: payload.conversationId,
+        isMuted: false,
+        participant: payload.participant,
+        phase: 'outgoing',
+      })
+    })
+
+    socket.on('call:accepted', (payload: CallAcceptancePayload) => {
+      if (callStateRef.current.callId !== payload.callId)
+        return
+
+      setCallState(current => ({ ...current, phase: 'connecting' }))
+
+      if (payload.answeredBy !== user.id)
+        void createOffer(payload.callId, payload.conversationId)
+    })
+
+    socket.on('call:signal', (payload: CallSignalPayload) => {
+      void handleIncomingSignal(payload)
+    })
+
+    socket.on('call:rejected', (payload: { callId: string }) => {
+      if (callStateRef.current.callId !== payload.callId)
+        return
+
+      toast.error('The call was declined.')
+      resetCallState()
+    })
+
+    socket.on('call:ended', (payload: CallEndPayload) => {
+      if (callStateRef.current.callId !== payload.callId)
+        return
+
+      toast.info(payload.reason === 'disconnected'
+        ? 'The call ended because the participant disconnected.'
+        : 'The call has ended.')
+      resetCallState()
+    })
+
+    socket.on('call:error', (payload: { message: string }) => {
+      toast.error(payload.message)
+      resetCallState()
+    })
+
+    return () => {
+      clearTypingTimeouts()
+      socket.disconnect()
+      socketRef.current = null
+      resetCallState()
+    }
+  }, [hydrateChats, receiveMessage, reset, setPresenceSnapshot, setTypingState, setUserPresence, upsertChatSummary, user])
+
+  function emitTyping(chatType: MessageChatType, chatId: string, isTyping: boolean): void {
+    if (!socketRef.current?.connected)
+      return
+
+    socketRef.current.emit(isTyping ? 'typing:start' : 'typing:stop', {
+      chatId,
+      chatType,
+    })
+  }
+
+  async function startVoiceCall(): Promise<void> {
+    const conversation = activeConversationRef.current
+    if (!conversation) {
+      toast.error('Voice calling is available only in direct messages.')
+      return
+    }
+
+    if (!socketRef.current?.connected) {
+      toast.error('Realtime connection is unavailable.')
+      return
+    }
+
+    setCallState({
+      callId: null,
+      conversationId: conversation.id,
+      isMuted: false,
+      participant: conversation.participant,
+      phase: 'outgoing',
+    })
+
+    socketRef.current.emit('call:start', {
+      conversationId: conversation.id,
+    })
+  }
+
+  async function answerVoiceCall(): Promise<void> {
+    const currentCallState = callStateRef.current
+    if (currentCallState.phase !== 'incoming' || !currentCallState.callId)
+      return
+
+    try {
+      await ensureLocalStream()
+      setCallState(current => ({ ...current, phase: 'connecting' }))
+      socketRef.current?.emit('call:accept', {
+        callId: currentCallState.callId,
+      })
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to access the microphone.')
+      rejectVoiceCall()
+    }
+  }
+
+  function rejectVoiceCall(): void {
+    const currentCallState = callStateRef.current
+    if (!currentCallState.callId)
+      return
+
+    socketRef.current?.emit(
+      currentCallState.phase === 'incoming' ? 'call:reject' : 'call:end',
+      { callId: currentCallState.callId },
+    )
+
+    resetCallState()
+  }
+
+  function endVoiceCall(): void {
+    const currentCallState = callStateRef.current
+    if (!currentCallState.callId)
+      return
+
+    socketRef.current?.emit('call:end', {
+      callId: currentCallState.callId,
+    })
+    resetCallState()
+  }
+
+  function toggleMute(): void {
+    const stream = localStreamRef.current
+    if (!stream)
+      return
+
+    const audioTracks = stream.getAudioTracks()
+    if (audioTracks.length === 0)
+      return
+
+    const nextMuted = !callStateRef.current.isMuted
+    for (const track of audioTracks)
+      track.enabled = !nextMuted
+
+    setCallState(current => ({ ...current, isMuted: nextMuted }))
+  }
+
+  const value: ChatRealtimeContextValue = {
+    answerVoiceCall,
+    callState,
+    emitTyping,
+    endVoiceCall,
+    rejectVoiceCall,
+    startVoiceCall,
+    toggleMute,
+    typingUsers,
+  }
+
+  return (
+    <ChatRealtimeContext.Provider value={value}>
+      {children}
+      <VoiceCallOverlay
+        callState={callState}
+        onAnswer={answerVoiceCall}
+        onEnd={endVoiceCall}
+        onReject={rejectVoiceCall}
+        onToggleMute={toggleMute}
+        remoteAudioRef={remoteAudioRef}
+      />
+    </ChatRealtimeContext.Provider>
+  )
 }
 
 export function useChat() {
-    const context = useContext(ChatContext)
-    if (context === undefined) {
-        throw new Error('useChat must be used within a ChatProvider')
+  const realtime = useContext(ChatRealtimeContext)
+  if (!realtime)
+    throw new Error('useChat must be used within ChatProvider.')
+
+  const chats = useChatStore(state => state.chats).map(toChatViewModel)
+  const activeChatId = useChatStore(state => state.activeChatId)
+  const activeChatType = useChatStore(state => state.activeChatType)
+  const activeChannel = useChatStore(state => state.activeChannel)
+  const activeConversation = useChatStore(state => state.activeConversation)
+  const setActiveChatId = useChatStore(state => state.setActiveChatId)
+  const joinChannel = useChatStore(state => state.joinChannel)
+  const submitJoinRequest = useChatStore(state => state.submitJoinRequest)
+  const messages = useChatStore(state => state.messages)
+  const pinnedMessages = useChatStore(state => state.pinnedMessages)
+  const members = useChatStore(state => state.members)
+  const sendMessage = useChatStore(state => state.sendMessage)
+  const isLoadingActiveChat = useChatStore(state => state.isLoadingActiveChat)
+  const isSendingMessage = useChatStore(state => state.isSendingMessage)
+  const onlineUserIds = useChatStore(state => state.onlineUserIds)
+
+  const activeChat = useMemo(() => {
+    if (activeChatType === 'channel' && activeChannel) {
+      return {
+        ...toChatViewModel(activeChannel),
+        online: members.filter(member => onlineUserIds.includes(member.userId)).length,
+      }
     }
-    return context
+
+    if (activeChatType === 'dm' && activeConversation)
+      return toChatViewModel(activeConversation)
+
+    return chats.find(chat => chat.id === activeChatId)
+  }, [activeChannel, activeChatId, activeChatType, activeConversation, chats, members, onlineUserIds])
+
+  return {
+    ...realtime,
+    activeChat,
+    activeChatId,
+    chats: chats.map((chat) => {
+      if (chat.type === 'dm' && chat.participant) {
+        return {
+          ...chat,
+          online: onlineUserIds.includes(chat.participant.id) ? 1 : 0,
+        }
+      }
+
+      return chat
+    }),
+    isLoadingActiveChat,
+    isSendingMessage,
+    joinChannel,
+    members,
+    messages,
+    onlineUserIds,
+    pinnedMessages,
+    sendMessage,
+    setActiveChatId,
+    submitJoinRequest,
+  }
 }
+
+export type ChatMessage = MessageResponse

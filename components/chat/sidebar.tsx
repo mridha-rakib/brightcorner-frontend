@@ -3,11 +3,13 @@
 import { Search, Plus, Settings, Hash, User, Lock } from 'lucide-react'
 import { useState } from 'react'
 import { useChat } from '@/context/chat-context'
+import { useAuthStore } from '@/store/auth-store'
 import Image from 'next/image'
 import Link from 'next/link'
 
 export function Sidebar() {
     const { chats, activeChatId, setActiveChatId } = useChat()
+    const currentUser = useAuthStore(state => state.user)
     const [activeTab, setActiveTab] = useState('channels')
     const [searchQuery, setSearchQuery] = useState('')
     return (
@@ -74,20 +76,29 @@ export function Sidebar() {
                         .map((chat) => (
                             <button
                                 key={chat.id}
-                                onClick={() => setActiveChatId(chat.id)}
+                                onClick={() => void setActiveChatId(chat.id, chat.type)}
                                 className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all group ${activeChatId === chat.id ? 'bg-indigo-50/50 ring-1 ring-indigo-100' : 'hover:bg-neutral-50'
                                     }`}
                             >
                                 <div className="relative">
                                     <div className="w-10 h-10 rounded-xl bg-neutral-200 overflow-hidden flex items-center justify-center text-neutral-500">
-                                        {chat.type === 'channel' ? <Hash size={20} /> : <User size={20} />}
-                                        <img
-                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat.name}`}
-                                            alt={chat.name}
-                                            className="absolute inset-0 object-cover"
-                                        />
+                                        {chat.type === 'channel'
+                                            ? (
+                                                <Hash size={20} />
+                                              )
+                                            : chat.participant?.profile.avatarUrl
+                                              ? (
+                                                  <img
+                                                      src={chat.participant.profile.avatarUrl}
+                                                      alt={chat.name}
+                                                      className="absolute inset-0 h-full w-full object-cover"
+                                                  />
+                                                )
+                                              : <User size={20} />}
                                     </div>
-                                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                                    {((chat.type === 'dm' && chat.online) || (chat.type === 'channel' && (chat.online ?? 0) > 0)) && (
+                                        <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-green-500 border-2 border-white rounded-full" />
+                                    )}
                                 </div>
                                 <div className="flex-1 text-left min-w-0">
                                     <div className="flex items-center justify-between mb-0.5">
@@ -147,14 +158,14 @@ export function Sidebar() {
                 <div className="flex items-center gap-3">
                     <div className="w-9 h-9 rounded-full bg-neutral-200 overflow-hidden">
                         <img
-                            src="https://api.dicebear.com/7.x/avataaars/svg?seed=Jane"
-                            alt="Jane Cooper"
+                            src={currentUser?.profile.avatarUrl || `https://api.dicebear.com/7.x/avataaars/svg?seed=${currentUser?.fullName || 'BrightCorner'}`}
+                            alt={currentUser?.fullName || 'BrightCorner user'}
                             className="w-full h-full object-cover"
                         />
                     </div>
                     <div className="min-w-0">
-                        <p className="text-xs font-bold text-neutral-900 truncate">Jane Cooper</p>
-                        <p className="text-[10px] text-neutral-400">Online</p>
+                        <p className="text-xs font-bold text-neutral-900 truncate">{currentUser?.fullName || 'Guest User'}</p>
+                        <p className="text-[10px] text-neutral-400">{currentUser?.privacySettings.onlineStatus ? 'Online' : 'Private'}</p>
                     </div>
                 </div>
                 <Link

@@ -1,19 +1,39 @@
 'use client'
 
+import { useEffect } from "react"
+import { toast } from "sonner"
+
 import LegalContentEditor from "@/components/admin/LegalContentEditor"
+import { useLegalContentStore } from "@/store/legal-content-store"
 
 export default function TermsEditorPage() {
-    const handleSave = (content: string) => {
+    const content = useLegalContentStore(state => state.contentByType.terms)
+    const isLoading = useLegalContentStore(state => state.isLoading)
+    const isSaving = useLegalContentStore(state => state.isSaving)
+    const fetchContent = useLegalContentStore(state => state.fetchContent)
+    const saveContent = useLegalContentStore(state => state.saveContent)
+
+    useEffect(() => {
+        void fetchContent("terms").catch(error => {
+            toast.error(error instanceof Error ? error.message : "Unable to load terms.")
+        })
+    }, [fetchContent])
+
+    const handleSave = async (payload: { title: string, content: string }) => {
+        await saveContent("terms", payload)
+        toast.success("Terms updated successfully.")
     }
 
     return (
         <div className="py-5">
             <LegalContentEditor
                 title="Terms & Conditions"
-                initialContent="There are many variations of passages of Lorem Ipsum available, but the majority have suffered alteration in some form, by injected humour, or randomised words which don't look even slightly believable. If you are going to use a passage of Lorem Ipsum, you need to be sure there isn't anything embarrassing hidden in the middle of text. All the Lorem Ipsum generators on the Internet tend to repeat predefined chunks as necessary, making this the first true generator on the Internet. It uses a dictionary of over 200 Latin words, combined with a handful of model sentence structures, to generate Lorem Ipsum which looks reasonable."
+                initialTitle={content?.title || "Terms & Conditions"}
+                initialContent={content?.content || ""}
+                isLoading={isLoading && !content}
+                isSaving={isSaving}
                 onSave={handleSave}
             />
         </div>
     )
 }
-

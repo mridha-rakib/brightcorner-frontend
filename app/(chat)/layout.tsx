@@ -1,6 +1,8 @@
 'use client'
 
 import { usePathname } from "next/navigation"
+
+import { RouteGuard } from "@/components/auth/route-guard"
 import { Sidebar } from "@/components/chat/sidebar"
 import { ChatProvider, useChat } from "@/context/chat-context"
 
@@ -28,10 +30,12 @@ export default function ChatLayout({
     children: React.ReactNode
 }) {
     return (
-        <ChatProvider>
-            <ChatLayoutContent>
-                {children}
-            </ChatLayoutContent>
-        </ChatProvider>
+        <RouteGuard area="chat">
+            <ChatProvider>
+                <ChatLayoutContent>
+                    {children}
+                </ChatLayoutContent>
+            </ChatProvider>
+        </RouteGuard>
     )
 }

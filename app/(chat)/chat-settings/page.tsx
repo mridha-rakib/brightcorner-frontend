@@ -4,8 +4,10 @@ import { ChevronLeft, ChevronRight, Eye, Mail, Bell, ShieldCheck, Palette, Moon,
 import Link from 'next/link'
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { toast } from 'sonner'
 import { Switch } from '@/components/ui/switch'
 import { DeleteAccountModal } from '@/components/chat/delete-account-modal'
+import { useAuthStore } from '@/store/auth-store'
 
 type SettingItem = {
     icon: React.ReactNode
@@ -18,11 +20,18 @@ type SettingItem = {
 
 export default function SettingsPage() {
     const router = useRouter()
+    const signOut = useAuthStore(state => state.signOut)
     const [nightMode, setNightMode] = useState(false)
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
 
-    const handleLogOut = () => {
-        router.push('/sign-in')
+    const handleLogOut = async () => {
+        try {
+            await signOut()
+            toast.success('Signed out successfully.')
+            router.push('/sign-in')
+        } catch (error) {
+            toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
+        }
     }
 
     const settingsGroups: { items: SettingItem[] }[] = [
@@ -109,7 +118,7 @@ export default function SettingsPage() {
                 {/* Account Actions */}
                 <div className="space-y-4 pt-4 pb-8">
                     <button
-                        onClick={handleLogOut}
+                        onClick={() => void handleLogOut()}
                         className="w-full flex items-center justify-between p-4 bg-white rounded-2xl border border-neutral-100 text-red-500 font-medium hover:bg-red-50 transition-colors group shadow-sm transition-all active:scale-[0.99]"
                     >
                         <div className="flex items-center gap-4">

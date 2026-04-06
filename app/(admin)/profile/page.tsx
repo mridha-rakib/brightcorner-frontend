@@ -1,65 +1,54 @@
 "use client"
 
 import { useState } from "react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import {
-    User,
-    Mail,
-    Phone,
-    MapPin,
-    Calendar,
-    ShieldCheck,
-    Award,
-    Edit,
-    Key,
-    Activity,
-    Clock,
-    Globe
-} from "lucide-react"
-import { EditProfileDialog } from "@/components/admin/profile/edit-profile-dialog"
+import { AtSign, BadgeCheck, Calendar, Clock, Edit, Key, Mail, ShieldCheck, User } from "lucide-react"
+
 import { ChangePasswordDialog } from "@/components/admin/profile/change-password-dialog"
+import { EditProfileDialog } from "@/components/admin/profile/edit-profile-dialog"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
+import { useAuthStore } from "@/store/auth-store"
 
 export default function AdminProfilePage() {
     const [isEditProfileOpen, setIsEditProfileOpen] = useState(false)
     const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false)
+    const user = useAuthStore(state => state.user)
 
-    // Admin data
-    const adminData = {
-        name: "Bright Corner Admin",
-        adminId: "ADM-2024-8844",
-        email: "admin@brightcorner.com",
-        phone: "+1 (555) 999-0000",
-        lastLogin: "Feb 24, 2026, 02:30 PM",
-        address: "789 Executive Plaza, Tech City, TX 75201",
-        role: "Super Admin",
-        accessLevel: "Level 10 (Full)",
-        managedSince: "January 12, 2023",
-        avatar: "", // Empty to show fallback
-        status: "Active",
-        location: "Dallas, USA"
-    }
+    const initials = user?.fullName
+        ?.split(' ')
+        .map(part => part[0])
+        .join('')
+        .slice(0, 2)
+        .toUpperCase() || 'BC'
+
+    const fullName = user?.fullName || 'Bright Corner Admin'
+    const username = user?.profile.username ? `@${user.profile.username}` : 'Not set'
+    const createdAt = user?.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Unavailable'
+    const updatedAt = user?.updatedAt ? new Date(user.updatedAt).toLocaleString() : 'Unavailable'
+    const lastLogin = user?.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : 'No recorded sign-in yet'
+    const roleLabel = user?.role === 'admin' ? 'Super Admin' : 'User'
+    const onboardingStatus = user?.onboardingCompleted ? 'Completed' : 'Pending'
+    const securityStatus = user?.isTwoFactorEnabled ? 'Enabled' : 'Disabled'
 
     return (
-        <div className="space-y-5 animate-in fade-in slide-in-from-bottom-4 duration-700 py-5">
-            {/* Header */}
+        <div className="space-y-5 py-5 animate-in fade-in slide-in-from-bottom-4 duration-700">
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-3xl font-extrabold text-neutral-900 tracking-tight">System Profile</h1>
+                    <h1 className="text-3xl font-extrabold tracking-tight text-neutral-900">System Profile</h1>
                     <p className="text-neutral-500">Manage your administrative identity and security preferences.</p>
                 </div>
 
                 <div className="flex flex-wrap gap-3">
                     <button
                         onClick={() => setIsEditProfileOpen(true)}
-                        className="flex items-center gap-2 rounded-2xl bg-neutral-50 border border-neutral-100 px-6 py-3 text-sm font-bold text-neutral-600 hover:bg-neutral-100 transition-all active:scale-95"
+                        className="flex items-center gap-2 rounded-2xl border border-neutral-100 bg-neutral-50 px-6 py-3 text-sm font-bold text-neutral-600 transition-all hover:bg-neutral-100 active:scale-95"
                     >
                         <Edit className="h-4 w-4" />
                         Edit Profile
                     </button>
                     <button
                         onClick={() => setIsChangePasswordOpen(true)}
-                        className="flex items-center gap-2 rounded-2xl bg-brand px-6 py-3 text-sm font-bold text-black hover:bg-brand-dark transition-all shadow-lg shadow-brand/20 active:scale-95"
+                        className="flex items-center gap-2 rounded-2xl bg-brand px-6 py-3 text-sm font-bold text-black shadow-lg shadow-brand/20 transition-all hover:bg-brand-dark active:scale-95"
                     >
                         <Key className="h-4 w-4" />
                         Change Password
@@ -67,84 +56,119 @@ export default function AdminProfilePage() {
                 </div>
             </div>
 
-            {/* Profile Card */}
-            <div className="rounded-[32px] border border-neutral-100 bg-white p-10 shadow-sm relative overflow-hidden group">
-                {/* Decorative Pattern */}
-                <div className="absolute top-0 right-0 w-64 h-64 bg-brand-muted rounded-full blur-3xl -mr-32 -mt-32 transition-transform group-hover:scale-110 duration-1000" />
+            <div className="group relative overflow-hidden rounded-[32px] border border-neutral-100 bg-white p-10 shadow-sm">
+                <div className="absolute right-0 top-0 -mr-32 -mt-32 h-64 w-64 rounded-full bg-brand-muted blur-3xl transition-transform duration-1000 group-hover:scale-110" />
 
                 <div className="relative z-10 flex flex-col gap-10 md:flex-row">
-                    {/* Avatar Section */}
                     <div className="flex flex-col items-center gap-6 md:w-72">
                         <div className="relative">
-                            <Avatar className="h-44 w-44 rounded-[40px] border-[6px] border-white shadow-2xl ring-1 ring-neutral-100 overflow-hidden">
-                                <AvatarImage src={adminData.avatar} className="object-cover" />
-                                <AvatarFallback className="bg-gradient-to-br from-brand to-brand-dark text-5xl font-black text-white rounded-none">
-                                    {adminData.name.split(' ').map(n => n[0]).join('')}
+                            <Avatar className="h-44 w-44 overflow-hidden rounded-[40px] border-[6px] border-white shadow-2xl ring-1 ring-neutral-100">
+                                <AvatarImage src={user?.profile.avatarUrl} className="object-cover" />
+                                <AvatarFallback className="rounded-none bg-gradient-to-br from-brand to-brand-dark text-5xl font-black text-white">
+                                    {initials}
                                 </AvatarFallback>
                             </Avatar>
-                            <div className="absolute -bottom-2 -right-2 w-10 h-10 rounded-2xl bg-white shadow-xl flex items-center justify-center text-brand border border-brand-muted">
+                            <div className="absolute -bottom-2 -right-2 flex h-10 w-10 items-center justify-center rounded-2xl border border-brand-muted bg-white text-brand shadow-xl">
                                 <ShieldCheck size={20} />
                             </div>
                         </div>
 
-                        <div className="text-center space-y-2">
-                            <h2 className="text-2xl font-black text-neutral-900 leading-tight">{adminData.name}</h2>
-                            <p className="text-sm font-bold text-neutral-400 uppercase tracking-widest">{adminData.adminId}</p>
-                            <div className="pt-2 flex flex-wrap justify-center gap-2">
-                                <Badge className="bg-brand-muted text-brand border-none font-bold rounded-xl px-3 py-1.5 text-[10px] uppercase tracking-wider">
-                                    {adminData.role}
+                        <div className="space-y-2 text-center">
+                            <h2 className="text-2xl font-black leading-tight text-neutral-900">{fullName}</h2>
+                            <p className="text-sm font-bold uppercase tracking-widest text-neutral-400">{username}</p>
+                            <div className="flex flex-wrap justify-center gap-2 pt-2">
+                                <Badge className="rounded-xl border-none bg-brand-muted px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-brand">
+                                    {roleLabel}
                                 </Badge>
-                                <Badge className="bg-blue-50 text-blue-600 border-none font-bold rounded-xl px-3 py-1.5 text-[10px] uppercase tracking-wider">
+                                <Badge className="rounded-xl border-none bg-blue-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-blue-600">
                                     Verified Admin
                                 </Badge>
                             </div>
                         </div>
                     </div>
 
-                    {/* Information Grid Container */}
                     <div className="flex-1 space-y-10">
-                        {/* Information Grid */}
-                        <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-2">
-                            {/* Personal Information */}
+                        <div className="grid gap-10 md:grid-cols-2">
                             <div className="space-y-6">
                                 <div className="flex items-center gap-3">
-                                    <div className="w-10 h-10 rounded-xl bg-brand-muted flex items-center justify-center text-brand">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-muted text-brand">
                                         <User size={20} />
                                     </div>
-                                    <h3 className="text-lg font-extrabold text-neutral-900">Personal Information</h3>
+                                    <h3 className="text-lg font-extrabold text-neutral-900">Profile Information</h3>
                                 </div>
                                 <div className="space-y-4 px-1">
-                                    <div className="group/item">
-                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-0.5">Admin Full Name</p>
-                                        <p className="text-sm font-bold text-neutral-700">{adminData.name}</p>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Full Name</p>
+                                        <p className="text-sm font-bold text-neutral-700">{fullName}</p>
                                     </div>
-                                    <div className="group/item">
-                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-0.5">System Email</p>
-                                        <div className="flex items-center gap-2 text-neutral-700 font-bold">
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">System Email</p>
+                                        <div className="flex items-center gap-2 font-bold text-neutral-700">
                                             <Mail className="h-4 w-4 text-neutral-300" />
-                                            <p className="text-sm">{adminData.email}</p>
+                                            <p className="text-sm">{user?.email || 'Unavailable'}</p>
                                         </div>
                                     </div>
-                                    <div className="group/item">
-                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-0.5">Primary Contact</p>
-                                        <div className="flex items-center gap-2 text-neutral-700 font-bold">
-                                            <Phone className="h-4 w-4 text-neutral-300" />
-                                            <p className="text-sm">{adminData.phone}</p>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Username</p>
+                                        <div className="flex items-center gap-2 font-bold text-neutral-700">
+                                            <AtSign className="h-4 w-4 text-neutral-300" />
+                                            <p className="text-sm">{username}</p>
                                         </div>
                                     </div>
-                                    <div className="group/item">
-                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-0.5">Executive Address</p>
-                                        <div className="flex items-start gap-2 text-neutral-700 font-bold">
-                                            <MapPin className="h-4 w-4 text-neutral-300 mt-0.5" />
-                                            <p className="text-sm leading-relaxed">{adminData.address}</p>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Bio</p>
+                                        <div className="flex items-start gap-2 font-bold text-neutral-700">
+                                            <BadgeCheck className="mt-0.5 h-4 w-4 text-neutral-300" />
+                                            <p className="text-sm leading-relaxed">{user?.profile.bio || 'No bio added yet.'}</p>
                                         </div>
                                     </div>
-                                    <div className="group/item">
-                                        <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest mb-1.5 ml-0.5">Account Status</p>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Account Status</p>
                                         <div className="flex items-center gap-2">
-                                            <div className="w-2 h-2 rounded-full bg-brand animate-pulse" />
-                                            <p className="text-sm font-bold text-brand tracking-tight">{adminData.status}</p>
+                                            <div className="h-2 w-2 animate-pulse rounded-full bg-brand" />
+                                            <p className="text-sm font-bold capitalize tracking-tight text-brand">{user?.status || 'active'}</p>
                                         </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                                        <ShieldCheck size={20} />
+                                    </div>
+                                    <h3 className="text-lg font-extrabold text-neutral-900">Access & Activity</h3>
+                                </div>
+                                <div className="space-y-4 px-1">
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Role</p>
+                                        <p className="text-sm font-bold text-neutral-700">{roleLabel}</p>
+                                    </div>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Joined Platform</p>
+                                        <div className="flex items-center gap-2 font-bold text-neutral-700">
+                                            <Calendar className="h-4 w-4 text-neutral-300" />
+                                            <p className="text-sm">{createdAt}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Last Login</p>
+                                        <div className="flex items-center gap-2 font-bold text-neutral-700">
+                                            <Clock className="h-4 w-4 text-neutral-300" />
+                                            <p className="text-sm">{lastLogin}</p>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Onboarding</p>
+                                        <p className="text-sm font-bold text-neutral-700">{onboardingStatus}</p>
+                                    </div>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Two-Step Verification</p>
+                                        <p className="text-sm font-bold text-neutral-700">{securityStatus}</p>
+                                    </div>
+                                    <div>
+                                        <p className="mb-1.5 ml-0.5 text-[10px] font-bold uppercase tracking-widest text-neutral-400">Last Updated</p>
+                                        <p className="text-sm font-bold text-neutral-700">{updatedAt}</p>
                                     </div>
                                 </div>
                             </div>
@@ -153,11 +177,10 @@ export default function AdminProfilePage() {
                 </div>
             </div>
 
-            {/* Dialogs */}
             <EditProfileDialog
                 open={isEditProfileOpen}
                 onOpenChange={setIsEditProfileOpen}
-                adminData={adminData}
+                user={user}
             />
 
             <ChangePasswordDialog
