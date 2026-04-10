@@ -57,6 +57,7 @@ export interface Chat {
   isSubscribed?: boolean
   totalAdmins?: number
   isEncrypted?: boolean
+  membersCanMessage?: boolean
   isPinProtected?: boolean
   isLocked?: boolean
   questions?: ChannelQuestion[]
@@ -148,6 +149,7 @@ function toChatViewModel(chat: ChatListItem): Chat {
       isSubscribed: chat.isSubscribed,
       totalAdmins: chat.totalAdmins,
       isEncrypted: chat.isEncrypted,
+      membersCanMessage: chat.membersCanMessage,
       questions: 'questions' in chat ? chat.questions : undefined,
     }
   }
@@ -738,6 +740,7 @@ export function useChat() {
   const loadJoinRequests = useChatStore(state => state.loadJoinRequests)
   const reviewJoinRequest = useChatStore(state => state.reviewJoinRequest)
   const updateChannelSubscription = useChatStore(state => state.updateChannelSubscription)
+  const updateChannelMessagingPermissions = useChatStore(state => state.updateChannelMessagingPermissions)
   const unlockProtectedConversation = useChatStore(state => state.unlockProtectedConversation)
   const lockProtectedConversationAccess = useChatStore(state => state.lockProtectedConversationAccess)
   const sendMessage = useChatStore(state => state.sendMessage)
@@ -795,6 +798,7 @@ export function useChat() {
     toggleReaction,
     unlockProtectedConversation,
     updateChannelSubscription,
+    updateChannelMessagingPermissions,
   }
 }
 

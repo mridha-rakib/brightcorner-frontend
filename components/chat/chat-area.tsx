@@ -37,6 +37,7 @@ import {
   InputOTPSlot,
 } from '@/components/ui/input-otp'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import { Switch } from '@/components/ui/switch'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import { JoinFlow } from '@/components/chat/join-flow'
 import {
@@ -201,6 +202,7 @@ export function ChatArea() {
     startVoiceCall,
     lockProtectedConversationAccess,
     unlockProtectedConversation,
+    updateChannelMessagingPermissions,
     updateChannelSubscription,
     emitTyping,
     typingUsers,
@@ -228,6 +230,7 @@ export function ChatArea() {
   const [selectedImageAttachment, setSelectedImageAttachment] = useState<MessageAttachment | null>(null)
   const [reviewStateByRequestId, setReviewStateByRequestId] = useState<Record<string, 'approve' | 'reject'>>({})
   const [isUpdatingSubscription, setIsUpdatingSubscription] = useState(false)
+  const [isUpdatingMessagingPermissions, setIsUpdatingMessagingPermissions] = useState(false)
   const [unlockPinValue, setUnlockPinValue] = useState('')
   const [isUnlockingConversation, setIsUnlockingConversation] = useState(false)
 
@@ -276,8 +279,14 @@ export function ChatArea() {
     && activeChat.joinStatus === 'joined'
     && !activeChat.isPublic
     && ['owner', 'admin'].includes(currentChannelMembership?.role ?? '')
+  const canManageChannel = activeChat?.type === 'channel'
+    && activeChat.joinStatus === 'joined'
+    && ['owner', 'admin'].includes(currentChannelMembership?.role ?? '')
   const canManageSubscription = activeChat?.type === 'channel'
     && activeChat.joinStatus === 'joined'
+  const canSendInActiveChat = activeChat?.type !== 'channel'
+    || activeChat.membersCanMessage
+    || ['owner', 'admin'].includes(currentChannelMembership?.role ?? '')
   const questionLabelById = useMemo(() => {
     if (activeChat?.type !== 'channel')
       return new Map<string, string>()
@@ -330,6 +339,7 @@ export function ChatArea() {
     setSelectedImageAttachment(null)
     setShowEmojiTray(false)
     setIsUpdatingSubscription(false)
+    setIsUpdatingMessagingPermissions(false)
     setUnlockPinValue('')
     setIsUnlockingConversation(false)
   }, [activeChat?.isLocked, activeChatKey])
@@ -359,6 +369,14 @@ export function ChatArea() {
   useEffect(() => {
     if (!activeChat)
       return
+
+    if (!canSendInActiveChat) {
+      if (typingStateRef.current) {
+        emitTyping('channel', activeChat.id, false)
+        typingStateRef.current = false
+      }
+      return
+    }
 
     if (isLockedProtectedConversation) {
       if (typingStateRef.current) {
@@ -390,7 +408,7 @@ export function ChatArea() {
     }, 1500)
 
     return () => clearTimeout(timer)
-  }, [activeChat, draftMessage, emitTyping, isLockedProtectedConversation, pendingAttachments.length])
+  }, [activeChat, canSendInActiveChat, draftMessage, emitTyping, isLockedProtectedConversation, pendingAttachments.length])
 
   useEffect(() => {
     return () => {
@@ -469,6 +487,11 @@ export function ChatArea() {
     if (!draftMessage.trim() && pendingAttachments.length === 0)
       return
 
+    if (!canSendInActiveChat) {
+      toast.error('Only channel owners and admins can send messages here.')
+      return
+    }
+
     try {
       await sendMessage({
         attachments: pendingAttachments,
@@ -492,6 +515,12 @@ export function ChatArea() {
   }
 
   async function handleAttachmentSelection(event: React.ChangeEvent<HTMLInputElement>) {
+    if (!canSendInActiveChat) {
+      event.target.value = ''
+      toast.error('Only channel owners and admins can send messages here.')
+      return
+    }
+
     const selectedFile = event.target.files?.[0]
     if (!selectedFile)
       return
@@ -650,6 +679,26 @@ export function ChatArea() {
     }
     finally {
       setIsUpdatingSubscription(false)
+    }
+  }
+
+  async function handleMessagingPermissionsToggle(checked: boolean) {
+    if (!activeChat || activeChat.type !== 'channel' || !canManageChannel)
+      return
+
+    setIsUpdatingMessagingPermissions(true)
+
+    try {
+      await updateChannelMessagingPermissions(activeChat.id, checked)
+      toast.success(checked
+        ? 'Members can now send messages.'
+        : 'Only owners and admins can send messages.')
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to update channel messaging.')
+    }
+    finally {
+      setIsUpdatingMessagingPermissions(false)
     }
   }
 
@@ -986,6 +1035,17 @@ export function ChatArea() {
                     </p>
                   )}
 
+                  {!canSendInActiveChat && (
+                    <div className="rounded-3xl border border-neutral-200/70 bg-neutral-50/80 px-4 py-3">
+                      <p className="text-sm font-semibold text-neutral-800">
+                        Only owners and admins can send messages here.
+                      </p>
+                      <p className="mt-1 text-xs font-medium text-neutral-500">
+                        You can still read messages and receive channel notifications.
+                      </p>
+                    </div>
+                  )}
+
                   {replyingToMessage && (
                     <div className="flex items-start justify-between gap-3 rounded-3xl border border-neutral-200/70 bg-neutral-50/80 px-4 py-3">
                       <div className="min-w-0">
@@ -1049,20 +1109,27 @@ export function ChatArea() {
                       className="hidden"
                       onChange={handleAttachmentSelection}
                     />
-                    <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-neutral-400 hover:text-indigo-600 sm:h-10 sm:w-10" onClick={() => fileInputRef.current?.click()}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      disabled={!canSendInActiveChat}
+                      className="h-9 w-9 rounded-full text-neutral-400 hover:text-indigo-600 sm:h-10 sm:w-10"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
                       <Paperclip size={20} />
                     </Button>
                     <Input
                       type="text"
                       value={draftMessage}
                       onChange={event => setDraftMessage(event.target.value)}
+                      disabled={!canSendInActiveChat}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' && !event.shiftKey) {
                           event.preventDefault()
                           void handleSendMessage()
                         }
                       }}
-                      placeholder={replyingToMessage ? 'Write your reply...' : 'Write a professional message...'}
+                      placeholder={!canSendInActiveChat ? 'Read-only channel' : replyingToMessage ? 'Write your reply...' : 'Write a professional message...'}
                       className="h-10 flex-1 border-none bg-transparent px-0 text-[13px] font-medium text-neutral-800 shadow-none focus-visible:ring-0 placeholder:text-neutral-400"
                     />
                     <div className="flex items-center gap-2 pr-1">
@@ -1070,13 +1137,14 @@ export function ChatArea() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setShowEmojiTray(current => !current)}
+                        disabled={!canSendInActiveChat}
                         className="h-9 w-9 rounded-full text-neutral-400 hover:text-indigo-600 sm:h-10 sm:w-10"
                       >
                         <Smile size={20} />
                       </Button>
                       <Button
                         onClick={() => void handleSendMessage()}
-                        disabled={isSendingMessage || (!draftMessage.trim() && pendingAttachments.length === 0)}
+                        disabled={!canSendInActiveChat || isSendingMessage || (!draftMessage.trim() && pendingAttachments.length === 0)}
                         className="group flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-xl shadow-indigo-100 transition-all hover:bg-indigo-700 active:scale-95 sm:h-11 sm:w-11"
                       >
                         <Send size={18} className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
@@ -1193,6 +1261,39 @@ export function ChatArea() {
                             ? activeChat.isSubscribed ? 'Updating...' : 'Subscribing...'
                             : activeChat.isSubscribed ? 'Unsubscribe' : 'Subscribe'}
                         </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {canManageSubscription && (
+                    <div className="mb-8 rounded-[28px] border border-neutral-200 bg-neutral-50/70 p-5 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-1">
+                          <h4 className="text-[10px] font-black uppercase tracking-[0.3em] text-neutral-400">
+                            Channel Messaging
+                          </h4>
+                          <p className="text-xs font-medium leading-relaxed text-neutral-500">
+                            Allow members to send messages in this channel.
+                          </p>
+                        </div>
+                        <Switch
+                          checked={Boolean(activeChat.membersCanMessage)}
+                          disabled={!canManageChannel || isUpdatingMessagingPermissions}
+                          aria-label="Allow members to send channel messages"
+                          onCheckedChange={checked => void handleMessagingPermissionsToggle(checked)}
+                          className="mt-1 data-[state=checked]:bg-indigo-600"
+                        />
+                      </div>
+
+                      <div className="mt-4 rounded-3xl border border-white/90 bg-white px-4 py-3">
+                        <p className="text-sm font-semibold text-neutral-900">
+                          {activeChat.membersCanMessage ? 'Members can send messages' : 'Owners and admins only'}
+                        </p>
+                        <p className="mt-1 text-xs font-medium text-neutral-500">
+                          {activeChat.membersCanMessage
+                            ? 'Everyone with channel access can post.'
+                            : 'Members can read messages and receive notifications.'}
+                        </p>
                       </div>
                     </div>
                   )}

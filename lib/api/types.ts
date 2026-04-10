@@ -139,6 +139,7 @@ export type ChannelSummary = {
   iconUrl?: string
   isPublic: boolean
   isEncrypted: true
+  membersCanMessage: boolean
   joinStatus: 'joined' | 'not_joined' | 'pending'
   isSubscribed: boolean
   unread: number

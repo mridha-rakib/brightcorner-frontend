@@ -2,7 +2,7 @@ import { create } from 'zustand'
 
 import type { AuthTwoFactorChallenge, PublicUser, SignInResponse } from '@/lib/api/types'
 
-import { apiClient, getApiErrorMessage, unwrapResponse } from '@/lib/api/client'
+import { apiClient, getApiErrorMessage, getApiErrorStatus, unwrapResponse } from '@/lib/api/client'
 
 type SignUpInput = {
   firstName: string
@@ -69,6 +69,7 @@ type AuthState = {
   isInitializing: boolean
   isSubmitting: boolean
   error: string | null
+  initializationError: string | null
   initialize: () => Promise<void>
   fetchCurrentUser: () => Promise<PublicUser | null>
   signUp: (input: SignUpInput) => Promise<PublicUser>
@@ -103,24 +104,37 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isInitializing: true,
   isSubmitting: false,
   error: null,
+  initializationError: null,
 
   initialize: async () => {
-    set({ isInitializing: true })
+    set({ error: null, initializationError: null, isInitializing: true })
 
     try {
       const user = await unwrapResponse<PublicUser>(apiClient.get('/auth/me'))
       persistTwoFactorChallenge(null)
-      set({ user, error: null, isInitializing: false, twoFactorChallenge: null })
+      set({
+        user,
+        error: null,
+        initializationError: null,
+        isInitializing: false,
+        twoFactorChallenge: null,
+      })
     }
-    catch {
-      set({ user: null, isInitializing: false })
+    catch (error) {
+      if (getApiErrorStatus(error) !== 401) {
+        const message = getApiErrorMessage(error)
+        set({ error: message, initializationError: message, isInitializing: false })
+        return
+      }
+
+      set({ user: null, initializationError: null, isInitializing: false })
     }
   },
 
   fetchCurrentUser: async () => {
     try {
       const user = await unwrapResponse<PublicUser>(apiClient.get('/users/me'))
-      set({ user, error: null })
+      set({ user, error: null, initializationError: null })
       return user
     }
     catch (error) {
@@ -138,7 +152,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         unwrapResponse<PublicUser>(apiClient.post('/auth/sign-up', input)),
       )
       persistTwoFactorChallenge(null)
-      set({ user, isSubmitting: false, twoFactorChallenge: null })
+      set({ user, initializationError: null, isSubmitting: false, twoFactorChallenge: null })
       return user
     }
     catch (error) {
@@ -169,6 +183,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       persistTwoFactorChallenge(null)
       set({
         user: result.user,
+        initializationError: null,
         isSubmitting: false,
         twoFactorChallenge: null,
       })
@@ -199,7 +214,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }),
       )
       persistTwoFactorChallenge(null)
-      set({ user, isSubmitting: false, twoFactorChallenge: null })
+      set({ user, initializationError: null, isSubmitting: false, twoFactorChallenge: null })
       return user
     }
     catch (error) {
@@ -242,7 +257,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       await apiClient.post('/auth/sign-out')
       persistTwoFactorChallenge(null)
-      set({ user: null, isSubmitting: false, twoFactorChallenge: null })
+      set({ user: null, initializationError: null, isSubmitting: false, twoFactorChallenge: null })
     }
     catch (error) {
       const message = getApiErrorMessage(error)
@@ -286,7 +301,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await unwrapResponse<PublicUser>(
         apiClient.patch('/users/me/onboarding', input),
       )
-      set({ user, isSubmitting: false })
+      set({ user, initializationError: null, isSubmitting: false })
       return user
     }
     catch (error) {
@@ -301,7 +316,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const user = await unwrapResponse<PublicUser>(apiClient.patch('/users/me/profile', input))
-      set({ user, isSubmitting: false })
+      set({ user, initializationError: null, isSubmitting: false })
       return user
     }
     catch (error) {
@@ -318,7 +333,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await unwrapResponse<PublicUser>(
         apiClient.patch('/users/me/privacy-settings', input),
       )
-      set({ user, isSubmitting: false })
+      set({ user, initializationError: null, isSubmitting: false })
       return user
     }
     catch (error) {
@@ -335,7 +350,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await unwrapResponse<PublicUser>(
         apiClient.patch('/users/me/notification-settings', input),
       )
-      set({ user, isSubmitting: false })
+      set({ user, initializationError: null, isSubmitting: false })
       return user
     }
     catch (error) {
@@ -352,7 +367,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await unwrapResponse<PublicUser>(
         apiClient.patch('/users/me/change-email', { newEmail }),
       )
-      set({ user, isSubmitting: false })
+      set({ user, initializationError: null, isSubmitting: false })
       return user
     }
     catch (error) {
@@ -387,7 +402,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         data: { password },
       })
       persistTwoFactorChallenge(null)
-      set({ user: null, isSubmitting: false, twoFactorChallenge: null })
+      set({ user: null, initializationError: null, isSubmitting: false, twoFactorChallenge: null })
     }
     catch (error) {
       const message = getApiErrorMessage(error)

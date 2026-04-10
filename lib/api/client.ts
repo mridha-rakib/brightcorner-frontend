@@ -138,3 +138,10 @@ export function getApiErrorMessage(error: unknown): string {
 
   return 'Something went wrong.'
 }
+
+export function getApiErrorStatus(error: unknown): number | undefined {
+  if (!axios.isAxiosError(error))
+    return undefined
+
+  return error.response?.status
+}

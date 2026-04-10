@@ -69,6 +69,45 @@ function redactProtectedConversation(conversation: ConversationSummary): Convers
   }
 }
 
+function resolveUnlockedConversationSnapshot(
+  state: Pick<ChatStore, 'activeConversation' | 'chats'>,
+  conversationId: string,
+): ConversationSummary | null {
+  if (state.activeConversation?.id === conversationId && !state.activeConversation.isLocked)
+    return state.activeConversation
+
+  const chat = state.chats.find(
+    (candidate): candidate is ConversationSummary =>
+      candidate.type === 'dm' && candidate.id === conversationId && !candidate.isLocked,
+  )
+
+  return chat ?? null
+}
+
+function preserveUnlockedConversationSummary(
+  conversation: ConversationSummary,
+  state: Pick<ChatStore, 'activeConversation' | 'activeChatId' | 'activeChatType' | 'chats' | 'protectedConversationAccess'>,
+): ConversationSummary {
+  if (
+    !conversation.isLocked
+    || state.protectedConversationAccess?.conversationId !== conversation.id
+  ) {
+    return conversation
+  }
+
+  const unlockedSnapshot = resolveUnlockedConversationSnapshot(state, conversation.id)
+  if (!unlockedSnapshot)
+    return conversation
+
+  return {
+    ...conversation,
+    ...unlockedSnapshot,
+    unread: state.activeChatId === conversation.id && state.activeChatType === 'dm'
+      ? 0
+      : conversation.unread,
+  }
+}
+
 function resolveTypingKey(chatType: 'channel' | 'conversation', chatId: string): string {
   return `${chatType}:${chatId}`
 }
@@ -142,6 +181,7 @@ type ChatStore = {
   joinChannel: (chatId: string) => Promise<void>
   submitJoinRequest: (chatId: string, input: JoinRequestInput) => Promise<void>
   updateChannelSubscription: (chatId: string, subscribed: boolean) => Promise<ChannelDetail>
+  updateChannelMessagingPermissions: (chatId: string, membersCanMessage: boolean) => Promise<ChannelDetail>
   loadJoinRequests: (chatId: string) => Promise<void>
   reviewJoinRequest: (chatId: string, requestId: string, action: ChannelJoinRequestReviewAction) => Promise<void>
   createChannel: (input: CreateChannelInput) => Promise<ChannelDetail>
@@ -240,9 +280,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         unwrapResponse<ConversationSummary[]>(apiClient.get('/conversations')),
       ])
 
-      const chats = sortChatsByLatestActivity([...channels, ...conversations])
+      set((state) => {
+        const mergedConversations = conversations.map(conversation =>
+          preserveUnlockedConversationSummary(conversation, state),
+        )
+        const chats = sortChatsByLatestActivity([...channels, ...mergedConversations])
 
-      set({ chats, isLoadingChats: false })
+        return { chats, isLoadingChats: false }
+      })
     }
     catch (error) {
       set({
@@ -515,6 +560,24 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       const channel = await unwrapResponse<ChannelDetail>(
         apiClient.patch(`/channels/${chatId}/subscription`, { subscribed }),
+      )
+
+      get().upsertChatSummary(channel)
+      return channel
+    }
+    catch (error) {
+      const message = getApiErrorMessage(error)
+      set({ error: message })
+      throw new Error(message)
+    }
+  },
+
+  updateChannelMessagingPermissions: async (chatId, membersCanMessage) => {
+    set({ error: null })
+
+    try {
+      const channel = await unwrapResponse<ChannelDetail>(
+        apiClient.patch(`/channels/${chatId}/messaging-permissions`, { membersCanMessage }),
       )
 
       get().upsertChatSummary(channel)
@@ -940,12 +1003,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   upsertChatSummary: (chat) => {
     set((state) => {
-      const normalizedChat = chat.type === 'dm'
-        && state.activeChatType === 'dm'
-        && state.activeChatId === chat.id
-        && !chat.isLocked
-        ? { ...chat, unread: 0 }
+      const unlockedConversation = chat.type === 'dm'
+        ? preserveUnlockedConversationSummary(chat, state)
         : chat
+      const normalizedChat = unlockedConversation.type === 'dm'
+        && state.activeChatType === 'dm'
+        && state.activeChatId === unlockedConversation.id
+        && !unlockedConversation.isLocked
+        ? { ...unlockedConversation, unread: 0 }
+        : unlockedConversation
       const existingChats = state.chats.filter(existingChat => existingChat.id !== chat.id)
       const nextState: Partial<ChatStore> = {
         chats: sortChatsByLatestActivity([normalizedChat, ...existingChats]),
@@ -966,7 +1032,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           ...normalizedConversation,
         }
 
-        if (chat.isLocked) {
+        if (normalizedConversation.isLocked) {
           if (state.protectedConversationAccess?.conversationId === chat.id)
             setConversationUnlockToken(null)
 
