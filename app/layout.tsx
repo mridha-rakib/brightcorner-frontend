@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
-import { Analytics } from '@vercel/analytics/next'
 
 import { AppProviders } from '@/components/providers/app-providers'
 
@@ -42,7 +41,6 @@ export default function RootLayout({
       <body className="font-sans antialiased">
         <AppProviders>
           {children}
-          <Analytics />
         </AppProviders>
       </body>
     </html>
