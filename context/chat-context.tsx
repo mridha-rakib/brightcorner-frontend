@@ -127,6 +127,8 @@ const IDLE_CALL_STATE: VoiceCallState = {
 }
 const EMPTY_TYPING_USERS: PublicUser[] = []
 const DEFAULT_STUN_URLS = ['stun:stun.l.google.com:19302']
+const DIAL_TONE_PULSE_SECONDS = 2
+const DIAL_TONE_CYCLE_MS = 6000
 
 function parseRtcUrls(value: string | undefined): string[] {
   return (value ?? '')
@@ -238,6 +240,8 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([])
+  const dialToneAudioContextRef = useRef<AudioContext | null>(null)
+  const dialToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
   const callStateRef = useRef<VoiceCallState>(IDLE_CALL_STATE)
   const activeConversationRef = useRef<ConversationSummary | null>(null)
@@ -251,6 +255,11 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     activeConversationRef.current = activeConversation
   }, [activeConversation])
+
+  useEffect(() => {
+    if (callState.phase !== 'outgoing')
+      stopDialTone()
+  }, [callState.phase])
 
   useEffect(() => {
     if (pathname !== '/chat')
@@ -283,7 +292,80 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     typingTimeoutsRef.current.clear()
   }
 
+  function stopDialTone(): void {
+    if (dialToneIntervalRef.current) {
+      clearInterval(dialToneIntervalRef.current)
+      dialToneIntervalRef.current = null
+    }
+
+    const audioContext = dialToneAudioContextRef.current
+    if (audioContext?.state === 'running')
+      void audioContext.suspend().catch(() => {})
+  }
+
+  function playDialTonePulse(audioContext: AudioContext): void {
+    const gainNode = audioContext.createGain()
+    gainNode.connect(audioContext.destination)
+    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime)
+
+    const oscillators = [440, 480].map((frequency) => {
+      const oscillator = audioContext.createOscillator()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
+      oscillator.connect(gainNode)
+      return oscillator
+    })
+
+    const startAt = audioContext.currentTime
+    const stopAt = startAt + DIAL_TONE_PULSE_SECONDS
+
+    gainNode.gain.exponentialRampToValueAtTime(0.02, startAt + 0.02)
+    gainNode.gain.setValueAtTime(0.02, stopAt - 0.1)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, stopAt)
+
+    for (const oscillator of oscillators) {
+      oscillator.start(startAt)
+      oscillator.stop(stopAt + 0.05)
+      oscillator.addEventListener('ended', () => oscillator.disconnect(), { once: true })
+    }
+
+    window.setTimeout(() => gainNode.disconnect(), (DIAL_TONE_PULSE_SECONDS + 0.1) * 1000)
+  }
+
+  async function startDialTone(): Promise<void> {
+    if (typeof window === 'undefined')
+      return
+
+    const AudioContextCtor = window.AudioContext
+      ?? (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    if (!AudioContextCtor)
+      return
+
+    stopDialTone()
+
+    const audioContext = dialToneAudioContextRef.current ?? new AudioContextCtor()
+    dialToneAudioContextRef.current = audioContext
+
+    if (audioContext.state !== 'running') {
+      try {
+        await audioContext.resume()
+      }
+      catch {
+        return
+      }
+    }
+
+    playDialTonePulse(audioContext)
+    dialToneIntervalRef.current = setInterval(() => {
+      if (audioContext.state !== 'running')
+        return
+
+      playDialTonePulse(audioContext)
+    }, DIAL_TONE_CYCLE_MS)
+  }
+
   function cleanupCallResources(): void {
+    stopDialTone()
     peerConnectionRef.current?.close()
     peerConnectionRef.current = null
     pendingIceCandidatesRef.current = []
@@ -749,6 +831,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
 
     try {
       await ensureLocalStream()
+      await startDialTone()
 
       setCallState({
         callId: null,
