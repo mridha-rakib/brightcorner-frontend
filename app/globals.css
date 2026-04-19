@@ -151,6 +151,15 @@
     @apply border-border outline-ring/50;
   }
 
+  html[dir='rtl'] {
+    text-align: right;
+  }
+
+  html[dir='rtl'] .language-switcher {
+    right: auto;
+    left: 1rem;
+  }
+
   body {
     @apply bg-background text-foreground overflow-x-hidden;
   }

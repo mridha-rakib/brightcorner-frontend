@@ -141,6 +141,7 @@ export type ChannelSummary = {
   isEncrypted: true
   membersCanMessage: boolean
   joinStatus: 'joined' | 'not_joined' | 'pending'
+  membershipRole?: 'owner' | 'admin' | 'member'
   isSubscribed: boolean
   unread: number
   members: number

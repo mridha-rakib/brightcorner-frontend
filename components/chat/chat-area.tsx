@@ -937,7 +937,7 @@ export function ChatArea() {
                                   )}
                                 </div>
 
-                                <div className={`flex flex-wrap items-center gap-2 px-1 opacity-0 transition-opacity group-hover:opacity-100 ${isMine ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`flex flex-wrap items-center gap-2 px-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 ${isMine ? 'justify-end' : 'justify-start'}`}>
                                   <Tooltip>
                                     <TooltipTrigger asChild>
                                       <button
@@ -1028,7 +1028,7 @@ export function ChatArea() {
                     ))}
                   </div>
                 </div>
-                <div className="z-20 shrink-0 space-y-3 border-t border-neutral-200/60 bg-white p-3 sm:p-4 md:p-6">
+                <div className="z-20 shrink-0 space-y-3 border-t border-neutral-200/60 bg-white p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] sm:p-4 md:p-6">
                   {activeTypingLabel && (
                     <p className="px-2 text-xs font-medium text-neutral-400">
                       {activeTypingLabel} {activeTypingUsers.length > 1 ? 'are' : 'is'} typing...

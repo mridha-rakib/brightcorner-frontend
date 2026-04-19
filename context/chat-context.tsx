@@ -54,6 +54,7 @@ export interface Chat {
   online?: number
   isPublic?: boolean
   joinStatus?: JoinStatus
+  membershipRole?: 'owner' | 'admin' | 'member'
   isSubscribed?: boolean
   totalAdmins?: number
   isEncrypted?: boolean
@@ -146,6 +147,7 @@ function toChatViewModel(chat: ChatListItem): Chat {
       online: chat.online,
       isPublic: chat.isPublic,
       joinStatus: chat.joinStatus,
+      membershipRole: chat.membershipRole,
       isSubscribed: chat.isSubscribed,
       totalAdmins: chat.totalAdmins,
       isEncrypted: chat.isEncrypted,

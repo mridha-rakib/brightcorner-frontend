@@ -1,5 +1,7 @@
 'use client'
 
+import { useI18n } from '@/lib/use-i18n'
+
 const organizations = [
     { number: '01', name: 'Global Finance' },
     { number: '02', name: 'Legal Counsel' },
@@ -8,15 +10,17 @@ const organizations = [
 ]
 
 export function TrustedBy() {
+    const { t } = useI18n()
+
     return (
         <section className="py-10 px-5 md:px-0">
             {/* Header row */}
             <div className="flex items-end justify-between mb-12">
                 <h2 className="text-4xl md:text-5xl font-extralight text-neutral-900">
-                    Trusted By
+                    {t('Trusted By')}
                 </h2>
                 <p className="text-xs text-neutral-400 tracking-widest uppercase">
-                    SELECT ORGANIZATIONS
+                    {t('SELECT ORGANIZATIONS')}
                 </p>
             </div>
 
@@ -27,7 +31,7 @@ export function TrustedBy() {
                         <p className="text-xs text-neutral-400 mb-3">{org.number}</p>
                         <div className="border-t border-neutral-200 pt-4">
                             <p className="text-sm font-light text-neutral-800">
-                                {org.name}
+                                {t(org.name)}
                             </p>
                         </div>
                     </div>

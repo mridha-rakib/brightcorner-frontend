@@ -3,6 +3,8 @@
 import { useEffect } from 'react'
 import { Toaster } from 'sonner'
 
+import { LanguageRuntime } from '@/components/providers/language-runtime'
+import { LanguageSwitcher } from '@/components/shared/language-switcher'
 import { useAuthStore } from '@/store/auth-store'
 
 export function AppProviders({ children }: { children: React.ReactNode }) {
@@ -14,8 +16,10 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      <LanguageRuntime />
       {children}
       <Toaster richColors position="top-right" />
+      <LanguageSwitcher />
     </>
   )
 }

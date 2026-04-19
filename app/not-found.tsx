@@ -1,9 +1,12 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, Search, MessageSquareX, Sparkles } from 'lucide-react'
+import { ArrowLeft, MessageSquareX, Sparkles } from 'lucide-react'
+import { useI18n } from '@/lib/use-i18n'
 
 export default function NotFound() {
+    const { t } = useI18n()
+
     return (
         <div className="relative flex min-h-screen w-full items-center justify-center overflow-hidden bg-white font-sans">
             {/* Morphing Background Glows */}
@@ -38,16 +41,16 @@ export default function NotFound() {
 
                 <div className="space-y-4 mb-12">
                     <h1 className="text-5xl md:text-7xl font-black text-neutral-900 tracking-tight leading-[1.1]">
-                        This corner <br />
+                        {t('This corner')} <br />
                         <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 bg-[length:200%_auto] animate-gradient">
-                            is out of bounds.
+                            {t('is out of bounds.')}
                         </span>
                     </h1>
 
                     <p className="text-lg md:text-xl text-neutral-500 max-w-md mx-auto leading-relaxed group">
-                        The channel you're looking for has moved or
+                        {t('The channel you\'re looking for has moved or')}
                         <span className="inline-flex items-center gap-1 mx-1 text-neutral-900 font-semibold group-hover:text-indigo-600 transition-colors cursor-default">
-                            never existed. <Sparkles size={16} className="text-indigo-400" />
+                            {t('never existed.')} <Sparkles size={16} className="text-indigo-400" />
                         </span>
                     </p>
                 </div>
@@ -58,7 +61,7 @@ export default function NotFound() {
                         className="w-full sm:w-auto px-10 py-5 bg-neutral-900 text-white rounded-[24px] font-bold text-lg flex items-center justify-center gap-3 hover:bg-neutral-800 transition-all hover:shadow-2xl hover:shadow-black/20 hover:-translate-y-1 active:scale-95 group"
                     >
                         <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" />
-                        Return to Home
+                        {t('Return to Home')}
                     </Link>
                 </div>
             </div>

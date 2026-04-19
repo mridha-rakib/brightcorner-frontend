@@ -21,6 +21,7 @@ import {
     SheetTitle,
     SheetTrigger,
 } from '@/components/ui/sheet'
+import { useI18n } from '@/lib/use-i18n'
 import { useAuthStore } from '@/store/auth-store'
 
 function getInitials(fullName?: string) {
@@ -34,6 +35,7 @@ function getInitials(fullName?: string) {
 
 export function Header() {
     const router = useRouter()
+    const { t } = useI18n()
     const user = useAuthStore(state => state.user)
     const isInitializing = useAuthStore(state => state.isInitializing)
     const signOut = useAuthStore(state => state.signOut)
@@ -44,11 +46,11 @@ export function Header() {
     const handleSignOut = async () => {
         try {
             await signOut()
-            toast.success('Signed out successfully.')
+            toast.success(t('Signed out successfully.'))
             router.push('/')
         }
         catch (error) {
-            toast.error(error instanceof Error ? error.message : 'Unable to sign out.')
+            toast.error(error instanceof Error ? error.message : t('Unable to sign out.'))
         }
     }
 
@@ -61,13 +63,13 @@ export function Header() {
 
                 <div className="hidden md:flex items-center gap-5 ">
                     <Link href="#manifesto" className="text-xs font-bold tracking-widest text-neutral-400 hover:text-neutral-900 transition-colors uppercase">
-                        MANIFESTO
+                        {t('MANIFESTO')}
                     </Link>
                     <Link href="#" className="text-xs font-bold tracking-widest text-neutral-400 hover:text-neutral-900 transition-colors uppercase">
-                        TECHNOLOGY
+                        {t('TECHNOLOGY')}
                     </Link>
                     <Link href="#access" className="text-xs font-bold tracking-widest text-neutral-400 hover:text-neutral-900 transition-colors uppercase">
-                        ACCESS
+                        {t('ACCESS')}
                     </Link>
                 </div>
 
@@ -102,7 +104,7 @@ export function Header() {
                                 <DropdownMenuItem asChild className="cursor-pointer rounded-xl px-3 py-2.5 font-medium text-neutral-700">
                                     <Link href={profileHref} className="flex items-center gap-2">
                                         <User size={16} />
-                                        Profile
+                                        {t('Profile')}
                                     </Link>
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
@@ -111,7 +113,7 @@ export function Header() {
                                     onSelect={() => void handleSignOut()}
                                 >
                                     <LogOut size={16} />
-                                    Logout
+                                    {t('Logout')}
                                 </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
@@ -120,7 +122,7 @@ export function Header() {
                     {!isInitializing && !user && (
                         <Link href="/sign-in" className="hidden sm:block">
                             <Button className="bg-[#4338CA] text-white rounded-full px-6 text-xs font-bold tracking-widest transition-all hover:bg-indigo-700 shadow-xl shadow-indigo-100">
-                                LOGIN
+                                {t('LOGIN')}
                             </Button>
                         </Link>
                     )}
@@ -141,18 +143,18 @@ export function Header() {
                                 </SheetHeader>
                                 <div className="flex flex-col gap-6 mt-12 px-5 md:px-0">
                                     <Link href="#manifesto" className="text-lg font-medium text-neutral-600 hover:text-[#4338CA] transition-colors border-b border-neutral-100 pb-4">
-                                        MANIFESTO
+                                        {t('MANIFESTO')}
                                     </Link>
                                     <Link href="#" className="text-lg font-medium text-neutral-600 hover:text-[#4338CA] transition-colors border-b border-neutral-100 pb-4">
-                                        TECHNOLOGY
+                                        {t('TECHNOLOGY')}
                                     </Link>
                                     <Link href="#access" className="text-lg font-medium text-neutral-600 hover:text-[#4338CA] transition-colors border-b border-neutral-100 pb-4">
-                                        ACCESS
+                                        {t('ACCESS')}
                                     </Link>
                                     {!isInitializing && !user && (
                                         <Link href="/sign-in" className="mt-4">
                                             <Button className="w-full bg-[#4338CA] text-white rounded-full py-6 text-sm font-bold tracking-widest">
-                                                LOGIN
+                                                {t('LOGIN')}
                                             </Button>
                                         </Link>
                                     )}

@@ -1,5 +1,7 @@
 'use client'
 
+import { useI18n } from '@/lib/use-i18n'
+
 const features = [
     {
         number: '02',
@@ -22,6 +24,8 @@ const features = [
 ]
 
 export function Features() {
+    const { t } = useI18n()
+
     return (
         <section className="py-10">
             <div className="divide-y divide-neutral-200 border-t border-neutral-200">
@@ -38,16 +42,16 @@ export function Features() {
                         {/* Title */}
                         <div>
                             <p className="text-xs text-neutral-400 tracking-widest uppercase mb-3">
-                                {feature.label}
+                                {t(feature.label)}
                             </p>
                             <h3 className="text-xl md:text-2xl font-light text-neutral-900">
-                                {feature.title}
+                                {t(feature.title)}
                             </h3>
                         </div>
 
                         {/* Description */}
                         <p className="text-sm text-neutral-500 leading-relaxed max-w-sm">
-                            {feature.description}
+                            {t(feature.description)}
                         </p>
                     </div>
                 ))}

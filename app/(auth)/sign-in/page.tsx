@@ -10,10 +10,12 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { resolveAuthenticatedRoute } from '@/lib/auth-routing'
+import { useI18n } from '@/lib/use-i18n'
 import { useAuthStore } from '@/store/auth-store'
 
 export default function SignInPage() {
   const router = useRouter()
+  const { t } = useI18n()
   const user = useAuthStore(state => state.user)
   const twoFactorChallenge = useAuthStore(state => state.twoFactorChallenge)
   const signIn = useAuthStore(state => state.signIn)
@@ -41,16 +43,16 @@ export default function SignInPage() {
       })
 
       if (result.status === 'two_factor_required') {
-        toast.success('Verification code sent. Check your email to continue.')
+        toast.success(t('Verification code sent. Check your email to continue.'))
         router.push('/two-factor')
         return
       }
 
-      toast.success('Signed in successfully.')
+      toast.success(t('Signed in successfully.'))
       router.push(resolveAuthenticatedRoute(result.user))
     }
     catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to sign in.')
+      toast.error(error instanceof Error ? error.message : t('Unable to sign in.'))
     }
   }
 
@@ -60,22 +62,22 @@ export default function SignInPage() {
         <div className="absolute top-12 left-12">
           <Link href="/" className="flex items-center gap-2 text-neutral-400 hover:text-neutral-900 transition-colors group">
             <ArrowLeft size={16} className="group-hover:-translate-x-1 transition-transform" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Landing Page</span>
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">{t('Landing Page')}</span>
           </Link>
         </div>
 
         <div className="relative z-10">
           <p className="text-[10px] text-neutral-400 font-black tracking-[0.3em] uppercase mb-12">
-            01 - Access Portal
+            {t('01 - Access Portal')}
           </p>
-          <h1 className="mb-4 text-5xl font-light tracking-tighter text-neutral-900 lg:text-6xl">Welcome Back</h1>
+          <h1 className="mb-4 text-5xl font-light tracking-tighter text-neutral-900 lg:text-6xl">{t('Welcome Back')}</h1>
           <p className="mb-12 text-5xl font-light tracking-tighter text-neutral-300 lg:text-6xl">
-            Your privacy is
+            {t('Your privacy is')}
             <br />
-            <span className="text-indigo-600 font-medium">waiting.</span>
+            <span className="text-indigo-600 font-medium">{t('waiting.')}</span>
           </p>
           <p className="text-sm text-neutral-500 leading-relaxed mb-16 max-w-sm font-medium">
-            Resume your encrypted session. Your data remains inaccessible to anyone but you through our decentralized architecture.
+            {t('Resume your encrypted session. Your data remains inaccessible to anyone but you through our decentralized architecture.')}
           </p>
         </div>
 
@@ -89,14 +91,14 @@ export default function SignInPage() {
             <div className="w-12 h-12 bg-indigo-600 rounded-2xl mb-8 flex items-center justify-center text-white shadow-xl shadow-indigo-100 rotate-3">
               <Lock size={22} strokeWidth={2.5} />
             </div>
-            <h2 className="mb-3 text-3xl font-light tracking-tighter text-neutral-900 sm:text-4xl">Sign In</h2>
-            <p className="text-sm text-neutral-500 font-medium tracking-tight">Access your encrypted dashboard and messages.</p>
+            <h2 className="mb-3 text-3xl font-light tracking-tighter text-neutral-900 sm:text-4xl">{t('Sign In')}</h2>
+            <p className="text-sm text-neutral-500 font-medium tracking-tight">{t('Access your encrypted dashboard and messages.')}</p>
           </div>
 
           <form className="space-y-8" onSubmit={handleSubmit}>
             <div className="space-y-3">
               <Label className="text-[10px] font-black text-neutral-400 tracking-[0.2em] uppercase ml-1">
-                Email or Username
+                {t('Email or Username')}
               </Label>
               <div className="relative group">
                 <div className="absolute left-5 top-1/2 -translate-y-1/2 text-neutral-400 group-focus-within:text-indigo-600 transition-colors">
@@ -115,10 +117,10 @@ export default function SignInPage() {
             <div className="space-y-3">
               <div className="flex justify-between items-center ml-1">
                 <Label className="text-[10px] font-black text-neutral-400 tracking-[0.2em] uppercase">
-                  Password
+                  {t('Password')}
                 </Label>
                 <Link href="/forgot-password" className="text-[10px] text-cyan-500 hover:text-cyan-600 font-black tracking-[0.1em] uppercase transition-colors">
-                  Lost access?
+                  {t('Lost access?')}
                 </Link>
               </div>
               <div className="relative group">
@@ -140,15 +142,15 @@ export default function SignInPage() {
               disabled={isSubmitting || !identifier.trim() || !password}
               className="w-full h-14 bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black tracking-[0.2em] uppercase rounded-full transition-all shadow-2xl shadow-indigo-100 active:scale-[0.98]"
             >
-              {isSubmitting ? 'Establishing...' : 'Establish Session'}
+              {isSubmitting ? t('Establishing...') : t('Establish Session')}
             </Button>
           </form>
 
           <div className="mt-12 pt-8 border-t border-neutral-100">
             <p className="text-center text-[12px] text-neutral-500 font-medium">
-              New to the network?
+              {t('New to the network?')}
               <Link href="/sign-up" className="text-indigo-600 font-black hover:underline tracking-tight ml-1">
-                Join the Collective
+                {t('Join the Collective')}
               </Link>
             </p>
           </div>
