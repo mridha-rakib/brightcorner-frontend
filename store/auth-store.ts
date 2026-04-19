@@ -71,6 +71,7 @@ type AuthState = {
   error: string | null
   initializationError: string | null
   initialize: () => Promise<void>
+  skipInitialization: () => void
   fetchCurrentUser: () => Promise<PublicUser | null>
   signUp: (input: SignUpInput) => Promise<PublicUser>
   signIn: (input: SignInInput) => Promise<SignInResponse>
@@ -129,6 +130,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
       set({ user: null, initializationError: null, isInitializing: false })
     }
+  },
+
+  skipInitialization: () => {
+    set(state => state.isInitializing
+      ? { initializationError: null, isInitializing: false }
+      : state)
   },
 
   fetchCurrentUser: async () => {

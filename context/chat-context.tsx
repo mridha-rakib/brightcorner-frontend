@@ -126,6 +126,43 @@ const IDLE_CALL_STATE: VoiceCallState = {
   phase: 'idle',
 }
 const EMPTY_TYPING_USERS: PublicUser[] = []
+const DEFAULT_STUN_URLS = ['stun:stun.l.google.com:19302']
+
+function parseRtcUrls(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean)
+}
+
+function resolveIceServers(): RTCIceServer[] {
+  const stunUrls = parseRtcUrls(process.env.NEXT_PUBLIC_WEBRTC_STUN_URLS)
+  const turnUrls = parseRtcUrls(process.env.NEXT_PUBLIC_WEBRTC_TURN_URLS)
+  const turnUsername = process.env.NEXT_PUBLIC_WEBRTC_TURN_USERNAME?.trim()
+  const turnCredential = process.env.NEXT_PUBLIC_WEBRTC_TURN_CREDENTIAL?.trim()
+  const iceServers: RTCIceServer[] = [
+    {
+      urls: stunUrls.length > 0 ? stunUrls : DEFAULT_STUN_URLS,
+    },
+  ]
+
+  if (turnUrls.length > 0 && turnUsername && turnCredential) {
+    iceServers.push({
+      credential: turnCredential,
+      urls: turnUrls,
+      username: turnUsername,
+    })
+  }
+
+  return iceServers
+}
+
+function logVoiceCallDebug(event: string, details?: Record<string, unknown>): void {
+  if (process.env.NEXT_PUBLIC_WEBRTC_DEBUG !== 'true')
+    return
+
+  console.info(`[voice-call] ${event}`, details ?? {})
+}
 
 const ChatRealtimeContext = createContext<ChatRealtimeContextValue | null>(null)
 
@@ -200,6 +237,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const typingTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map())
   const peerConnectionRef = useRef<RTCPeerConnection | null>(null)
   const localStreamRef = useRef<MediaStream | null>(null)
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([])
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
   const callStateRef = useRef<VoiceCallState>(IDLE_CALL_STATE)
   const activeConversationRef = useRef<ConversationSummary | null>(null)
@@ -248,6 +286,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   function cleanupCallResources(): void {
     peerConnectionRef.current?.close()
     peerConnectionRef.current = null
+    pendingIceCandidatesRef.current = []
 
     for (const track of localStreamRef.current?.getTracks() ?? [])
       track.stop()
@@ -315,14 +354,26 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (peerConnectionRef.current)
       return peerConnectionRef.current
 
+    const iceServers = resolveIceServers()
     const peerConnection = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+      iceServers,
+    })
+    pendingIceCandidatesRef.current = []
+    logVoiceCallDebug('peer-connection:created', {
+      callId,
+      conversationId,
+      iceServerUrls: iceServers.flatMap(server => Array.isArray(server.urls) ? server.urls : [server.urls]),
     })
 
     peerConnection.onicecandidate = (event) => {
       if (!event.candidate || !socketRef.current)
         return
 
+      logVoiceCallDebug('ice-candidate:local', {
+        candidate: event.candidate.candidate,
+        sdpMid: event.candidate.sdpMid,
+        sdpMLineIndex: event.candidate.sdpMLineIndex,
+      })
       socketRef.current.emit('call:signal', {
         callId,
         signal: {
@@ -338,11 +389,22 @@ export function ChatProvider({ children }: { children: ReactNode }) {
         return
 
       remoteAudioRef.current.srcObject = remoteStream
-      void remoteAudioRef.current.play().catch(() => {})
+      void remoteAudioRef.current.play().catch((error) => {
+        logVoiceCallDebug('remote-audio:play-failed', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+      })
+      logVoiceCallDebug('remote-track:received', {
+        streamId: remoteStream.id,
+        trackIds: remoteStream.getTracks().map(track => track.id),
+      })
       setCallState(current => ({ ...current, phase: 'active' }))
     }
 
     peerConnection.onconnectionstatechange = () => {
+      logVoiceCallDebug('connection-state:changed', {
+        connectionState: peerConnection.connectionState,
+      })
       if (peerConnection.connectionState === 'connected') {
         setCallState(current => ({ ...current, phase: 'active' }))
         return
@@ -357,22 +419,63 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       }
     }
 
-    peerConnectionRef.current = peerConnection
-
-    void ensureLocalStream()
-      .then(stream => attachLocalTracks(peerConnection, stream))
-      .catch((error) => {
-        toast.error(error instanceof Error ? error.message : 'Unable to access the microphone.')
-        resetCallState()
+    peerConnection.oniceconnectionstatechange = () => {
+      logVoiceCallDebug('ice-connection-state:changed', {
+        iceConnectionState: peerConnection.iceConnectionState,
       })
+    }
 
+    peerConnectionRef.current = peerConnection
     return peerConnection
   }
 
-  async function createOffer(callId: string, conversationId: string): Promise<void> {
+  async function ensurePeerConnection(callId: string, conversationId: string): Promise<RTCPeerConnection> {
     const peerConnection = createPeerConnection(callId, conversationId)
+    const stream = await ensureLocalStream()
+    attachLocalTracks(peerConnection, stream)
+    return peerConnection
+  }
+
+  async function addRemoteIceCandidate(
+    peerConnection: RTCPeerConnection,
+    candidate: RTCIceCandidateInit,
+  ): Promise<void> {
+    if (!peerConnection.remoteDescription) {
+      pendingIceCandidatesRef.current.push(candidate)
+      logVoiceCallDebug('ice-candidate:queued', {
+        queueLength: pendingIceCandidatesRef.current.length,
+      })
+      return
+    }
+
+    await peerConnection.addIceCandidate(candidate)
+    logVoiceCallDebug('ice-candidate:applied', {
+      remainingQueuedCandidates: pendingIceCandidatesRef.current.length,
+    })
+  }
+
+  async function flushPendingIceCandidates(peerConnection: RTCPeerConnection): Promise<void> {
+    if (!peerConnection.remoteDescription || pendingIceCandidatesRef.current.length === 0)
+      return
+
+    const pendingCandidates = [...pendingIceCandidatesRef.current]
+    pendingIceCandidatesRef.current = []
+
+    for (const candidate of pendingCandidates)
+      await peerConnection.addIceCandidate(candidate)
+
+    logVoiceCallDebug('ice-candidate:queue-flushed', {
+      flushedCandidates: pendingCandidates.length,
+    })
+  }
+
+  async function createOffer(callId: string, conversationId: string): Promise<void> {
+    const peerConnection = await ensurePeerConnection(callId, conversationId)
     const offer = await peerConnection.createOffer()
     await peerConnection.setLocalDescription(offer)
+    logVoiceCallDebug('description:local-offer-created', {
+      type: offer.type,
+    })
 
     socketRef.current?.emit('call:signal', {
       callId,
@@ -388,26 +491,46 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (currentCallState.callId !== payload.callId)
       return
 
-    const peerConnection = createPeerConnection(payload.callId, payload.conversationId)
+    try {
+      const peerConnection = await ensurePeerConnection(payload.callId, payload.conversationId)
 
-    if (payload.signal.type === 'candidate') {
-      await peerConnection.addIceCandidate(payload.signal.candidate)
-      return
-    }
+      if (payload.signal.type === 'candidate') {
+        await addRemoteIceCandidate(peerConnection, payload.signal.candidate)
+        return
+      }
 
-    await peerConnection.setRemoteDescription(payload.signal.description)
-
-    if (payload.signal.type === 'offer') {
-      const answer = await peerConnection.createAnswer()
-      await peerConnection.setLocalDescription(answer)
-
-      socketRef.current?.emit('call:signal', {
-        callId: payload.callId,
-        signal: {
-          description: answer,
-          type: 'answer',
-        },
+      await peerConnection.setRemoteDescription(payload.signal.description)
+      logVoiceCallDebug('description:remote-applied', {
+        type: payload.signal.type,
       })
+      await flushPendingIceCandidates(peerConnection)
+
+      if (payload.signal.type === 'offer') {
+        const answer = await peerConnection.createAnswer()
+        await peerConnection.setLocalDescription(answer)
+        logVoiceCallDebug('description:local-answer-created', {
+          type: answer.type,
+        })
+
+        socketRef.current?.emit('call:signal', {
+          callId: payload.callId,
+          signal: {
+            description: answer,
+            type: 'answer',
+          },
+        })
+      }
+    }
+    catch (error) {
+      logVoiceCallDebug('signal:handling-failed', {
+        error: error instanceof Error ? error.message : String(error),
+        signalType: payload.signal.type,
+      })
+
+      if (payload.signal.type !== 'candidate') {
+        toast.error('Unable to establish the voice connection.')
+        resetCallState()
+      }
     }
   }
 
@@ -513,7 +636,13 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       setCallState(current => ({ ...current, phase: 'connecting' }))
 
       if (payload.answeredBy !== user.id)
-        void createOffer(payload.callId, payload.conversationId)
+        void createOffer(payload.callId, payload.conversationId).catch((error) => {
+          logVoiceCallDebug('offer:create-failed', {
+            error: error instanceof Error ? error.message : String(error),
+          })
+          toast.error('Unable to establish the voice connection.')
+          resetCallState()
+        })
     })
 
     socket.on('call:signal', (payload: CallSignalPayload) => {
@@ -618,20 +747,28 @@ export function ChatProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    setCallState({
-      callId: null,
-      conversationId: conversation.id,
-      isMuted: false,
-      participant: conversation.participant,
-      phase: 'outgoing',
-    })
+    try {
+      await ensureLocalStream()
 
-    socketRef.current.emit('call:start', {
-      conversationId: conversation.id,
-      unlockToken: protectedConversationAccess?.conversationId === conversation.id
-        ? protectedConversationAccess.unlockToken
-        : undefined,
-    })
+      setCallState({
+        callId: null,
+        conversationId: conversation.id,
+        isMuted: false,
+        participant: conversation.participant,
+        phase: 'outgoing',
+      })
+
+      socketRef.current.emit('call:start', {
+        conversationId: conversation.id,
+        unlockToken: protectedConversationAccess?.conversationId === conversation.id
+          ? protectedConversationAccess.unlockToken
+          : undefined,
+      })
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to access the microphone.')
+      resetCallState()
+    }
   }
 
   async function answerVoiceCall(): Promise<void> {
