@@ -129,6 +129,7 @@ const EMPTY_TYPING_USERS: PublicUser[] = []
 const DEFAULT_STUN_URLS = ['stun:stun.l.google.com:19302']
 const DIAL_TONE_PULSE_SECONDS = 2
 const DIAL_TONE_CYCLE_MS = 6000
+const INCOMING_RINGTONE_CYCLE_MS = 3400
 
 function parseRtcUrls(value: string | undefined): string[] {
   return (value ?? '')
@@ -157,6 +158,14 @@ function resolveIceServers(): RTCIceServer[] {
   }
 
   return iceServers
+}
+
+function resolveAudioContextCtor(): typeof AudioContext | undefined {
+  if (typeof window === 'undefined')
+    return undefined
+
+  return window.AudioContext
+    ?? (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
 }
 
 function logVoiceCallDebug(event: string, details?: Record<string, unknown>): void {
@@ -242,6 +251,9 @@ export function ChatProvider({ children }: { children: ReactNode }) {
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([])
   const dialToneAudioContextRef = useRef<AudioContext | null>(null)
   const dialToneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const incomingRingtoneAudioContextRef = useRef<AudioContext | null>(null)
+  const incomingRingtoneIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const hasPrimedIncomingRingtoneRef = useRef(false)
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null)
   const callStateRef = useRef<VoiceCallState>(IDLE_CALL_STATE)
   const activeConversationRef = useRef<ConversationSummary | null>(null)
@@ -260,6 +272,32 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (callState.phase !== 'outgoing')
       stopDialTone()
   }, [callState.phase])
+
+  useEffect(() => {
+    if (callState.phase === 'incoming') {
+      void startIncomingRingtone()
+      return
+    }
+
+    stopIncomingRingtone()
+  }, [callState.phase])
+
+  useEffect(() => {
+    if (!user || typeof window === 'undefined' || hasPrimedIncomingRingtoneRef.current)
+      return
+
+    function handleFirstInteraction(): void {
+      void primeIncomingRingtoneAudio()
+    }
+
+    window.addEventListener('pointerdown', handleFirstInteraction, { passive: true })
+    window.addEventListener('keydown', handleFirstInteraction)
+
+    return () => {
+      window.removeEventListener('pointerdown', handleFirstInteraction)
+      window.removeEventListener('keydown', handleFirstInteraction)
+    }
+  }, [user])
 
   useEffect(() => {
     if (pathname !== '/chat')
@@ -336,8 +374,7 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     if (typeof window === 'undefined')
       return
 
-    const AudioContextCtor = window.AudioContext
-      ?? (window as Window & typeof globalThis & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext
+    const AudioContextCtor = resolveAudioContextCtor()
     if (!AudioContextCtor)
       return
 
@@ -364,8 +401,139 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     }, DIAL_TONE_CYCLE_MS)
   }
 
+  function stopIncomingRingtone(): void {
+    if (incomingRingtoneIntervalRef.current) {
+      clearInterval(incomingRingtoneIntervalRef.current)
+      incomingRingtoneIntervalRef.current = null
+    }
+
+    const audioContext = incomingRingtoneAudioContextRef.current
+    if (audioContext?.state === 'running')
+      void audioContext.suspend().catch(() => {})
+
+    const vibrationNavigator = typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean })
+      : null
+    vibrationNavigator?.vibrate?.(0)
+  }
+
+  function playIncomingRingtonePulse(audioContext: AudioContext): void {
+    const gainNode = audioContext.createGain()
+    gainNode.connect(audioContext.destination)
+    gainNode.gain.setValueAtTime(0.0001, audioContext.currentTime)
+
+    const oscillators = [660, 880].map((frequency) => {
+      const oscillator = audioContext.createOscillator()
+      oscillator.type = 'sine'
+      oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
+      oscillator.connect(gainNode)
+      return oscillator
+    })
+
+    const startAt = audioContext.currentTime
+    const firstStopAt = startAt + 0.55
+    const secondStartAt = startAt + 0.8
+    const secondStopAt = secondStartAt + 0.55
+
+    gainNode.gain.setValueAtTime(0.0001, startAt)
+    gainNode.gain.exponentialRampToValueAtTime(0.035, startAt + 0.03)
+    gainNode.gain.setValueAtTime(0.035, firstStopAt - 0.05)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, firstStopAt)
+    gainNode.gain.setValueAtTime(0.0001, secondStartAt)
+    gainNode.gain.exponentialRampToValueAtTime(0.035, secondStartAt + 0.03)
+    gainNode.gain.setValueAtTime(0.035, secondStopAt - 0.05)
+    gainNode.gain.exponentialRampToValueAtTime(0.0001, secondStopAt)
+
+    for (const oscillator of oscillators) {
+      oscillator.start(startAt)
+      oscillator.stop(secondStopAt + 0.05)
+      oscillator.addEventListener('ended', () => oscillator.disconnect(), { once: true })
+    }
+
+    const vibrationNavigator = typeof navigator !== 'undefined'
+      ? (navigator as Navigator & { vibrate?: (pattern: number | number[]) => boolean })
+      : null
+    vibrationNavigator?.vibrate?.([450, 250, 450])
+
+    window.setTimeout(() => gainNode.disconnect(), (secondStopAt - startAt + 0.1) * 1000)
+  }
+
+  async function primeIncomingRingtoneAudio(): Promise<void> {
+    if (hasPrimedIncomingRingtoneRef.current || typeof window === 'undefined')
+      return
+
+    const AudioContextCtor = resolveAudioContextCtor()
+    if (!AudioContextCtor)
+      return
+
+    const audioContext = incomingRingtoneAudioContextRef.current ?? new AudioContextCtor()
+    incomingRingtoneAudioContextRef.current = audioContext
+
+    try {
+      if (audioContext.state !== 'running')
+        await audioContext.resume()
+
+      hasPrimedIncomingRingtoneRef.current = true
+
+      if (callStateRef.current.phase !== 'incoming')
+        await audioContext.suspend()
+    }
+    catch (error) {
+      logVoiceCallDebug('incoming-ringtone:prime-failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }
+
+  async function startIncomingRingtone(): Promise<void> {
+    if (typeof window === 'undefined')
+      return
+
+    const AudioContextCtor = resolveAudioContextCtor()
+    if (!AudioContextCtor)
+      return
+
+    stopIncomingRingtone()
+
+    const audioContext = incomingRingtoneAudioContextRef.current ?? new AudioContextCtor()
+    incomingRingtoneAudioContextRef.current = audioContext
+
+    if (audioContext.state !== 'running') {
+      try {
+        await audioContext.resume()
+      }
+      catch (error) {
+        logVoiceCallDebug('incoming-ringtone:play-blocked', {
+          error: error instanceof Error ? error.message : String(error),
+        })
+        return
+      }
+    }
+
+    if (audioContext.state !== 'running') {
+      logVoiceCallDebug('incoming-ringtone:play-blocked', {
+        audioContextState: audioContext.state,
+      })
+      return
+    }
+
+    if (callStateRef.current.phase !== 'incoming') {
+      stopIncomingRingtone()
+      return
+    }
+
+    playIncomingRingtonePulse(audioContext)
+    incomingRingtoneIntervalRef.current = setInterval(() => {
+      if (audioContext.state !== 'running')
+        return
+
+      playIncomingRingtonePulse(audioContext)
+    }, INCOMING_RINGTONE_CYCLE_MS)
+  }
+
   function cleanupCallResources(): void {
     stopDialTone()
+    stopIncomingRingtone()
     peerConnectionRef.current?.close()
     peerConnectionRef.current = null
     pendingIceCandidatesRef.current = []
